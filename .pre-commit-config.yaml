@@ -1,0 +1,55 @@
+repos:
+-   repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
+    hooks:
+    -   id: conventional-pre-commit
+        stages: [commit-msg]
+
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: mixed-line-ending
+    -   id: check-case-conflict
+    -   id: check-ast
+    -   id: check-toml
+    -   id: check-yaml
+    -   id: check-added-large-files
+    -   id: end-of-file-fixer
+
+-   repo: https://github.com/crate-ci/typos
+    rev: v1.30.3
+    hooks:
+    -   id: typos
+
+-   repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+    -   id: detect-secrets
+
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.14
+    hooks:
+    -   id: ruff
+        args: [--fix]
+    -   id: ruff-format
+
+-   repo: local
+    hooks:
+    -   id: lint
+        name: Linter
+        entry: uv run ruff check
+        language: system
+        types: [python]
+        require_serial: true
+        verbose: true
+        pass_filenames: false
+
+    -   id: mypy
+        name: Mypy
+        entry: uv run mypy faststream_sqlbroker
+        language: system
+        types: [python]
+        require_serial: true
+        verbose: true
+        pass_filenames: false

@@ -1,0 +1,58 @@
+[build-system]
+requires = ["uv_build>=0.10.0,<0.11.0"]
+build-backend = "uv_build"
+
+[project]
+name = "faststream-sqlbroker"
+description = "FastStream SQL broker"
+readme = "README.md"
+authors = [
+    { name = "Arseniy Popov", email = "arseniypopov@gmail.com" },
+]
+requires-python = ">=3.10"
+version = "0.1.0"
+
+dependencies = [
+    "faststream>=0.7.0rc1",
+    "sqlalchemy>=2.0.44",
+]
+
+[tool.uv.build-backend]
+module-root = "."
+module-name = "faststream_sqlbroker"
+
+[dependency-groups]
+lint = [
+    "ruff==0.14.14",
+    "mypy==1.19.1",
+]
+
+test = [
+    "pytest==9.0.3",
+    "pytest-asyncio==1.3.0",
+    "pytest-timeout>=2.4.0",
+    "dirty-equals==0.11",
+    "asyncpg>=0.31.0",
+    "asyncmy>=0.2.10",
+    "aiosqlite>=0.22.1",
+    "cryptography>=43.0.0",
+]
+
+dev = [
+    {include-group = "lint"},
+    {include-group = "test"},
+    "pre-commit==4.5.1",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+timeout = 30
+addopts = "--strict-markers --strict-config -q"
+testpaths = ["tests"]
+markers = [
+    "sqla",
+    "slow",
+    "connected",
+    "all",
+]
+asyncio_default_fixture_loop_scope = "function"
