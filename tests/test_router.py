@@ -1,6 +1,6 @@
 import pytest
 
-from faststream.sqla.broker.router import (
+from faststream_sqlbroker.sqla.broker.router import (
     SqlaPublisher,
     SqlaRoute,
 )

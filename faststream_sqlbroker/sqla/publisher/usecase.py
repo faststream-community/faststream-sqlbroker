@@ -2,20 +2,21 @@ from collections.abc import Iterable
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Union
 
+from faststream._internal.endpoint.publisher import PublisherUsecase
+from faststream.exceptions import FeatureNotSupportedException
 from sqlalchemy.ext.asyncio import AsyncConnection
 from typing_extensions import override
 
-from faststream._internal.endpoint.publisher import PublisherUsecase
-from faststream.exceptions import FeatureNotSupportedException
-from faststream.sqla.response import SqlaPublishCommand
+from faststream_sqlbroker.sqla.response import SqlaPublishCommand
 
 if TYPE_CHECKING:
     from faststream._internal.basic_types import SendableMessage
     from faststream._internal.endpoint.publisher import PublisherSpecification
     from faststream._internal.types import PublisherMiddleware
     from faststream.response.response import PublishCommand
-    from faststream.sqla.configs.broker import SqlaBrokerConfig
-    from faststream.sqla.publisher.config import SqlaPublisherConfig
+
+    from faststream_sqlbroker.sqla.configs.broker import SqlaBrokerConfig
+    from faststream_sqlbroker.sqla.publisher.config import SqlaPublisherConfig
 
 
 class LogicPublisher(PublisherUsecase):

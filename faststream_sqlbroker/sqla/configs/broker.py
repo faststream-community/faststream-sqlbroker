@@ -1,14 +1,14 @@
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from sqlalchemy.ext.asyncio import AsyncEngine
-
 from faststream._internal.configs.broker import BrokerConfig
 from faststream._internal.producer import ProducerUnset
-from faststream.sqla.client import SqlaBaseClient, create_sqla_client
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from faststream_sqlbroker.sqla.client import SqlaBaseClient, create_sqla_client
 
 if TYPE_CHECKING:
-    from faststream.sqla.publisher.producer import SqlaProducer
+    from faststream_sqlbroker.sqla.publisher.producer import SqlaProducer
 
 
 @dataclass(kw_only=True)

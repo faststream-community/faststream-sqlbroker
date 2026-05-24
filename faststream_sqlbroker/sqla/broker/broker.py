@@ -5,32 +5,32 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, Union, cast
 
 import anyio
 from fast_depends import Provider, dependency_provider
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
-from typing_extensions import override
-
 from faststream._internal.broker import BrokerUsecase
 from faststream._internal.constants import EMPTY
 from faststream._internal.context.repository import ContextRepo
 from faststream._internal.di.config import FastDependsConfig
 from faststream.specification.schema.broker import BrokerSpec
-from faststream.sqla.broker.logging import make_sqla_logger_state
-from faststream.sqla.broker.registrator import SqlaRegistrator
-from faststream.sqla.configs.broker import SqlaBrokerConfig
-from faststream.sqla.message import SqlaInnerMessage
-from faststream.sqla.publisher.producer import SqlaProducer
-from faststream.sqla.response import SqlaPublishCommand
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from typing_extensions import override
+
+from faststream_sqlbroker.sqla.broker.logging import make_sqla_logger_state
+from faststream_sqlbroker.sqla.broker.registrator import SqlaRegistrator
+from faststream_sqlbroker.sqla.configs.broker import SqlaBrokerConfig
+from faststream_sqlbroker.sqla.message import SqlaInnerMessage
+from faststream_sqlbroker.sqla.publisher.producer import SqlaProducer
+from faststream_sqlbroker.sqla.response import SqlaPublishCommand
 
 if TYPE_CHECKING:
     from types import TracebackType
 
     from fast_depends.dependencies import Dependant
     from fast_depends.library.serializer import SerializerProto
-
     from faststream._internal.basic_types import LoggerProto, SendableMessage
     from faststream._internal.types import BrokerMiddleware, CustomCallable
     from faststream.security import BaseSecurity
     from faststream.specification.schema.extra.tag import Tag, TagDict
-    from faststream.sqla.client import SqlaBaseClient
+
+    from faststream_sqlbroker.sqla.client import SqlaBaseClient
 
 
 class SqlaBroker(

@@ -5,7 +5,7 @@ from .specification import SqlaPublisherSpecification
 from .usecase import LogicPublisher
 
 if TYPE_CHECKING:
-    from faststream.sqla.configs.broker import SqlaBrokerConfig
+    from faststream_sqlbroker.sqla.configs.broker import SqlaBrokerConfig
 
 
 def create_publisher(

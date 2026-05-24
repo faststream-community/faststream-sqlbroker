@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from faststream.message.utils import decode_message
-from faststream.sqla.message import SqlaInnerMessage, SqlaMessage
+
+from faststream_sqlbroker.sqla.message import SqlaInnerMessage, SqlaMessage
 
 if TYPE_CHECKING:
     from faststream._internal.basic_types import DecodedMessage

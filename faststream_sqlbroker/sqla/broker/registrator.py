@@ -1,22 +1,22 @@
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
-from typing_extensions import override
-
 from faststream import AckPolicy
 from faststream._internal.broker.registrator import Registrator
-from faststream.sqla.configs.broker import SqlaBrokerConfig
-from faststream.sqla.message import SqlaInnerMessage
-from faststream.sqla.publisher.factory import create_publisher
-from faststream.sqla.retry import RetryStrategyProto
-from faststream.sqla.subscriber.factory import create_subscriber
+from typing_extensions import override
+
+from faststream_sqlbroker.sqla.configs.broker import SqlaBrokerConfig
+from faststream_sqlbroker.sqla.message import SqlaInnerMessage
+from faststream_sqlbroker.sqla.publisher.factory import create_publisher
+from faststream_sqlbroker.sqla.retry import RetryStrategyProto
+from faststream_sqlbroker.sqla.subscriber.factory import create_subscriber
 
 if TYPE_CHECKING:
     from fast_depends.dependencies import Dependant
-
     from faststream._internal.types import CustomCallable
-    from faststream.sqla.publisher.usecase import LogicPublisher
-    from faststream.sqla.subscriber.usecase import SqlaSubscriber
+
+    from faststream_sqlbroker.sqla.publisher.usecase import LogicPublisher
+    from faststream_sqlbroker.sqla.subscriber.usecase import SqlaSubscriber
 
 
 class SqlaRegistrator(Registrator[SqlaInnerMessage, SqlaBrokerConfig]):

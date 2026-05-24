@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Union
 
-from sqlalchemy.ext.asyncio import AsyncConnection
-
 from faststream.response.publish_type import PublishType
 from faststream.response.response import BatchPublishCommand, PublishCommand
-from faststream.sqla.exceptions import DatetimeMissingTimezoneException
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from faststream_sqlbroker.sqla.exceptions import DatetimeMissingTimezoneException
 
 if TYPE_CHECKING:
     from faststream._internal.basic_types import SendableMessage

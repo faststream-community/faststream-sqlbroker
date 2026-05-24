@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from faststream.sqla.broker.broker import SqlaBroker
+from faststream_sqlbroker.sqla.broker.broker import SqlaBroker
 from tests.brokers.base.connection import BrokerConnectionTestcase
 from tests.brokers.sqla.helpers import Settings
 

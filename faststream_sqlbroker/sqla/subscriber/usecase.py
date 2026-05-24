@@ -13,14 +13,14 @@ from collections.abc import (
 from contextlib import asynccontextmanager, suppress
 from typing import TYPE_CHECKING, Any, Literal, Optional, TypeVar, cast
 
-from typing_extensions import override
-
 from faststream._internal.endpoint.subscriber.mixins import TasksMixin
 from faststream._internal.endpoint.subscriber.usecase import SubscriberUsecase
 from faststream.exceptions import FeatureNotSupportedException, StopConsume
-from faststream.sqla.client import SqlaBaseClient
-from faststream.sqla.message import SqlaInnerMessage
-from faststream.sqla.parser import SqlaParser
+from typing_extensions import override
+
+from faststream_sqlbroker.sqla.client import SqlaBaseClient
+from faststream_sqlbroker.sqla.message import SqlaInnerMessage
+from faststream_sqlbroker.sqla.parser import SqlaParser
 
 if TYPE_CHECKING:
     from faststream._internal.endpoint.publisher.proto import PublisherProto
@@ -29,7 +29,8 @@ if TYPE_CHECKING:
         SubscriberSpecification,
     )
     from faststream.message import StreamMessage
-    from faststream.sqla.configs.subscriber import SqlaSubscriberConfig
+
+    from faststream_sqlbroker.sqla.configs.subscriber import SqlaSubscriberConfig
 
 _CoroutineReturnType = TypeVar("_CoroutineReturnType")
 

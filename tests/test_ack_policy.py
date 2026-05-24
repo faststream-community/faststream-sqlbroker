@@ -6,16 +6,16 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from faststream import AckPolicy
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from faststream import AckPolicy
-from faststream.sqla import SqlaBroker
-from faststream.sqla.annotations import (
+from faststream_sqlbroker.sqla import SqlaBroker
+from faststream_sqlbroker.sqla.annotations import (
     SqlaMessage as SqlaMessageAnnotation,
 )
-from faststream.sqla.message import SqlaMessageState
-from faststream.sqla.retry import ConstantRetryStrategy
+from faststream_sqlbroker.sqla.message import SqlaMessageState
+from faststream_sqlbroker.sqla.retry import ConstantRetryStrategy
 from tests.brokers.sqla.basic import SqlaTestcaseConfig
 from tests.brokers.sqla.helpers import as_datetime
 

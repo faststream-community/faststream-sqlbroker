@@ -3,13 +3,14 @@ from typing import TYPE_CHECKING, Any
 
 from faststream import AckPolicy
 from faststream._internal.endpoint.subscriber.call_item import CallsCollection
-from faststream.sqla.configs.subscriber import SqlaSubscriberConfig
-from faststream.sqla.subscriber.specification import SqlaSubscriberSpecification
-from faststream.sqla.subscriber.usecase import SqlaSubscriber
+
+from faststream_sqlbroker.sqla.configs.subscriber import SqlaSubscriberConfig
+from faststream_sqlbroker.sqla.subscriber.specification import SqlaSubscriberSpecification
+from faststream_sqlbroker.sqla.subscriber.usecase import SqlaSubscriber
 
 if TYPE_CHECKING:
-    from faststream.sqla.configs.broker import SqlaBrokerConfig
-    from faststream.sqla.retry import RetryStrategyProto
+    from faststream_sqlbroker.sqla.configs.broker import SqlaBrokerConfig
+    from faststream_sqlbroker.sqla.retry import RetryStrategyProto
 
 
 def create_subscriber(

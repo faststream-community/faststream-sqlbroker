@@ -5,8 +5,8 @@ import pytest
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from faststream.sqla import SqlaBroker
-from faststream.sqla.exceptions import DatetimeMissingTimezoneException
+from faststream_sqlbroker.sqla import SqlaBroker
+from faststream_sqlbroker.sqla.exceptions import DatetimeMissingTimezoneException
 from tests.brokers.base.publish import BrokerPublishTestcase
 from tests.brokers.sqla.helpers import as_datetime
 

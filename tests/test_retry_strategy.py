@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from faststream.sqla.retry import (
+from faststream_sqlbroker.sqla.retry import (
     ConstantRetryStrategy,
     ConstantWithJitterRetryStrategy,
     ExponentialBackoffRetryStrategy,

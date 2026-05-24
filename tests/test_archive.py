@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from faststream.sqla.client import create_sqla_client
-from faststream.sqla.message import SqlaInnerMessage, SqlaMessageState
+from faststream_sqlbroker.sqla.client import create_sqla_client
+from faststream_sqlbroker.sqla.message import SqlaInnerMessage, SqlaMessageState
 
 
 @pytest.mark.sqla()

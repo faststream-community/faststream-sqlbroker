@@ -3,8 +3,9 @@ from dataclasses import dataclass, field
 from faststream import AckPolicy
 from faststream._internal.configs.endpoint import SubscriberUsecaseConfig
 from faststream._internal.constants import EMPTY
-from faststream.sqla.configs.broker import SqlaBrokerConfig
-from faststream.sqla.retry import RetryStrategyProto
+
+from faststream_sqlbroker.sqla.configs.broker import SqlaBrokerConfig
+from faststream_sqlbroker.sqla.retry import RetryStrategyProto
 
 
 @dataclass(kw_only=True)

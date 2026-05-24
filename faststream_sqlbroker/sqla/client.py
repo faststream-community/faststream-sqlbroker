@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
+from faststream.exceptions import FeatureNotSupportedException, SetupError
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -28,9 +29,8 @@ from sqlalchemy.dialects.mysql import insert as insert_mysql
 from sqlalchemy.dialects.postgresql import insert as insert_pg
 from sqlalchemy.dialects.sqlite import insert as insert_sqlite
 
-from faststream.exceptions import FeatureNotSupportedException, SetupError
-from faststream.sqla.message import SqlaInnerMessage, SqlaMessageState
-from faststream.sqla.schema_validator import SchemaValidator
+from faststream_sqlbroker.sqla.message import SqlaInnerMessage, SqlaMessageState
+from faststream_sqlbroker.sqla.schema_validator import SchemaValidator
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

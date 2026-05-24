@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
 from faststream.message.message import StreamMessage
-from faststream.sqla.retry import RetryStrategyProto
+
+from faststream_sqlbroker.sqla.retry import RetryStrategyProto
 
 if TYPE_CHECKING:
     from faststream._internal.basic_types import LoggerProto

@@ -4,7 +4,8 @@ from faststream._internal.configs import (
     PublisherSpecificationConfig,
     PublisherUsecaseConfig,
 )
-from faststream.sqla.configs.broker import SqlaBrokerConfig
+
+from faststream_sqlbroker.sqla.configs.broker import SqlaBrokerConfig
 
 
 @dataclass(kw_only=True)

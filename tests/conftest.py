@@ -21,7 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects import mysql, postgresql
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from faststream.sqla.message import SqlaMessageState
+from faststream_sqlbroker.sqla.message import SqlaMessageState
 from tests.brokers.sqla.helpers import Settings
 
 if TYPE_CHECKING:

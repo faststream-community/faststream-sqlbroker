@@ -1,22 +1,22 @@
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Optional, cast
 
-from sqlalchemy.ext.asyncio import AsyncEngine
-from typing_extensions import override
-
 from faststream._internal.endpoint.utils import ParserComposition
 from faststream._internal.producer import ProducerProto
 from faststream.exceptions import FeatureNotSupportedException
 from faststream.message.utils import encode_message
-from faststream.sqla.parser import SqlaParser
-from faststream.sqla.response import SqlaPublishCommand
+from sqlalchemy.ext.asyncio import AsyncEngine
+from typing_extensions import override
+
+from faststream_sqlbroker.sqla.parser import SqlaParser
+from faststream_sqlbroker.sqla.response import SqlaPublishCommand
 
 if TYPE_CHECKING:
     from fast_depends.library.serializer import SerializerProto
-
     from faststream._internal.types import AsyncCallable, CustomCallable
-    from faststream.sqla.client import SqlaBaseClient
-    from faststream.sqla.configs.broker import SqlaBrokerConfig
+
+    from faststream_sqlbroker.sqla.client import SqlaBaseClient
+    from faststream_sqlbroker.sqla.configs.broker import SqlaBrokerConfig
 
 
 class SqlaProducerProto(ProducerProto[SqlaPublishCommand]):

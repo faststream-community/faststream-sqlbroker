@@ -1,10 +1,10 @@
 import pytest
 import pytest_asyncio
+from faststream import AckPolicy
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from faststream import AckPolicy
-from faststream.sqla import SqlaBroker
-from faststream.sqla.retry import NoRetryStrategy
+from faststream_sqlbroker.sqla import SqlaBroker
+from faststream_sqlbroker.sqla.retry import NoRetryStrategy
 
 
 @pytest_asyncio.fixture

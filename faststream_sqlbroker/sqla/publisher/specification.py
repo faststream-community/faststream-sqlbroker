@@ -1,6 +1,7 @@
 from faststream._internal.endpoint.publisher import PublisherSpecification
 from faststream.specification.schema import Message, Operation, PublisherSpec
-from faststream.sqla.configs.broker import SqlaBrokerConfig
+
+from faststream_sqlbroker.sqla.configs.broker import SqlaBrokerConfig
 
 from .config import SqlaPublisherSpecificationConfig
 

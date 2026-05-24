@@ -2,6 +2,7 @@ import enum
 from datetime import datetime, timezone
 
 import pytest
+from faststream.exceptions import SetupError
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -19,8 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects import mysql, postgresql
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from faststream.exceptions import SetupError
-from faststream.sqla.message import SqlaMessageState
+from faststream_sqlbroker.sqla.message import SqlaMessageState
 from tests.brokers.sqla.basic import SqlaTestcaseConfig
 
 

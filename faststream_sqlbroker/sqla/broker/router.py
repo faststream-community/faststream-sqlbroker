@@ -11,14 +11,14 @@ from faststream._internal.broker.router import (
     SubscriberRoute,
 )
 from faststream.middlewares import AckPolicy
-from faststream.sqla.broker.registrator import SqlaRegistrator
-from faststream.sqla.configs.broker import SqlaBrokerConfig
-from faststream.sqla.message import SqlaInnerMessage
-from faststream.sqla.retry import RetryStrategyProto
+
+from faststream_sqlbroker.sqla.broker.registrator import SqlaRegistrator
+from faststream_sqlbroker.sqla.configs.broker import SqlaBrokerConfig
+from faststream_sqlbroker.sqla.message import SqlaInnerMessage
+from faststream_sqlbroker.sqla.retry import RetryStrategyProto
 
 if TYPE_CHECKING:
     from fast_depends.dependencies import Dependant
-
     from faststream._internal.basic_types import SendableMessage
     from faststream._internal.types import (
         BrokerMiddleware,
