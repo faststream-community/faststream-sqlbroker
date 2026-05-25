@@ -1,0 +1,4 @@
+[submodule "faststream"]
+	path = faststream
+	url = https://github.com/Arseniy-Popov/faststream.git
+	branch = feat/sqla-broker
