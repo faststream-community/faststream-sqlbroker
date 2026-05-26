@@ -1,8 +1,6 @@
 import random
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
 from faststream_sqlbroker.sqla.retry import (
     ConstantRetryStrategy,
     ConstantWithJitterRetryStrategy,
@@ -13,7 +11,6 @@ from faststream_sqlbroker.sqla.retry import (
 )
 
 
-@pytest.mark.sqla()
 def test_no_retry_strategy() -> None:
     strategy = NoRetryStrategy()
     first_attempt_at = datetime.now(timezone.utc)
@@ -28,7 +25,6 @@ def test_no_retry_strategy() -> None:
     )
 
 
-@pytest.mark.sqla()
 def test_constant_retry_strategy() -> None:
     strategy = ConstantRetryStrategy(
         delay_seconds=10, max_total_delay_seconds=60, max_attempts=4
@@ -66,7 +62,6 @@ def test_constant_retry_strategy() -> None:
     )
 
 
-@pytest.mark.sqla()
 def test_linear_retry_strategy() -> None:
     strategy = LinearRetryStrategy(
         initial_delay_seconds=1,
@@ -107,7 +102,6 @@ def test_linear_retry_strategy() -> None:
     )
 
 
-@pytest.mark.sqla()
 def test_exponential_backoff_retry_strategy() -> None:
     strategy = ExponentialBackoffRetryStrategy(
         initial_delay_seconds=1,
@@ -156,7 +150,6 @@ def test_exponential_backoff_retry_strategy() -> None:
     )
 
 
-@pytest.mark.sqla()
 def test_constant_with_jitter_retry_strategy() -> None:
     rng = random.Random(42)
     strategy = ConstantWithJitterRetryStrategy(
@@ -202,7 +195,6 @@ def test_constant_with_jitter_retry_strategy() -> None:
     )
 
 
-@pytest.mark.sqla()
 def test_exponential_backoff_with_jitter_retry_strategy() -> None:
     rng = random.Random(42)
     strategy = ExponentialBackoffWithJitterRetryStrategy(

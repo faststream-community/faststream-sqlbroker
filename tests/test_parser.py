@@ -5,7 +5,6 @@ from tests.brokers.base.parser import CustomParserTestcase
 from .basic import SqlaTestcaseConfig
 
 
-@pytest.mark.sqla()
 @pytest.mark.connected()
 @pytest.mark.slow()
 class TestCustomParser(SqlaTestcaseConfig, CustomParserTestcase):

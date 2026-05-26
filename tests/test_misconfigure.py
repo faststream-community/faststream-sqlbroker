@@ -1,8 +1,8 @@
 import pytest
 import pytest_asyncio
-from faststream import AckPolicy
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from faststream import AckPolicy
 from faststream_sqlbroker.sqla import SqlaBroker
 from faststream_sqlbroker.sqla.retry import NoRetryStrategy
 
@@ -12,7 +12,6 @@ async def broker() -> SqlaBroker:
     return SqlaBroker(engine=create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 
-@pytest.mark.sqla()
 @pytest.mark.asyncio()
 async def test_warn_on_max_deliveries(broker: SqlaBroker) -> None:
     with pytest.warns(
@@ -34,7 +33,6 @@ async def test_warn_on_max_deliveries(broker: SqlaBroker) -> None:
         )
 
 
-@pytest.mark.sqla()
 @pytest.mark.asyncio()
 async def test_warn_when_retry_strategy_ignored(broker: SqlaBroker) -> None:
     with pytest.warns(
@@ -56,7 +54,6 @@ async def test_warn_when_retry_strategy_ignored(broker: SqlaBroker) -> None:
         )
 
 
-@pytest.mark.sqla()
 @pytest.mark.asyncio()
 async def test_warn_when_nack_without_retry_strategy(broker: SqlaBroker) -> None:
     with pytest.warns(
@@ -78,7 +75,6 @@ async def test_warn_when_nack_without_retry_strategy(broker: SqlaBroker) -> None
         )
 
 
-@pytest.mark.sqla()
 @pytest.mark.asyncio()
 async def test_warn_when_ack_first_used(broker: SqlaBroker) -> None:
     with pytest.warns(

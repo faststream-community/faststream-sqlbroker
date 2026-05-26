@@ -21,7 +21,7 @@ from sqlalchemy.dialects import mysql, postgresql
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from faststream_sqlbroker.sqla.message import SqlaMessageState
-from tests.brokers.sqla.basic import SqlaTestcaseConfig
+from tests.basic import SqlaTestcaseConfig
 
 
 class WrongSqlaMessageState(str, enum.Enum):
@@ -32,7 +32,6 @@ class WrongSqlaMessageState(str, enum.Enum):
     FAILED = "FAILED"
 
 
-@pytest.mark.sqla()
 @pytest.mark.connected()
 @pytest.mark.slow()
 class TestSchemaValidation(SqlaTestcaseConfig):

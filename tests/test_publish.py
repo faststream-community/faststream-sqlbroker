@@ -8,12 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from faststream_sqlbroker.sqla import SqlaBroker
 from faststream_sqlbroker.sqla.exceptions import DatetimeMissingTimezoneException
 from tests.brokers.base.publish import BrokerPublishTestcase
-from tests.brokers.sqla.helpers import as_datetime
+from tests.helpers import as_datetime
 
 from .basic import SqlaTestcaseConfig
 
 
-@pytest.mark.sqla()
 @pytest.mark.connected()
 @pytest.mark.slow()
 class TestPublish(SqlaTestcaseConfig, BrokerPublishTestcase):
@@ -98,7 +97,6 @@ class TestPublish(SqlaTestcaseConfig, BrokerPublishTestcase):
         )
 
 
-@pytest.mark.sqla()
 @pytest.mark.connected()
 class TestPublishTransaction(SqlaTestcaseConfig):
     @pytest.mark.asyncio()
@@ -160,7 +158,6 @@ class TestPublishTransaction(SqlaTestcaseConfig):
         assert len(result.all()) == 0
 
 
-@pytest.mark.sqla()
 @pytest.mark.connected()
 @pytest.mark.slow()
 class TestPublishBatch(SqlaTestcaseConfig):
@@ -299,7 +296,6 @@ class TestPublishBatch(SqlaTestcaseConfig):
             )
 
 
-@pytest.mark.sqla()
 @pytest.mark.connected()
 class TestPublishBatchTransaction(SqlaTestcaseConfig):
     @pytest.mark.asyncio()

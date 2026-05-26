@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
+from uuid import uuid4
 
+import pytest
 import pytest_asyncio
 from sqlalchemy import (
     JSON,
@@ -22,12 +26,10 @@ from sqlalchemy.dialects import mysql, postgresql
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from faststream_sqlbroker.sqla.message import SqlaMessageState
-from tests.brokers.sqla.helpers import Settings
+from tests.helpers import Settings
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-
-    import pytest
+    from collections.abc import AsyncGenerator, Generator
 
 
 BACKENDS = (
@@ -35,6 +37,33 @@ BACKENDS = (
     "mysql",
     "sqlite",
 )  # fmt: skip
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    # Make `pytest -m all` a "run everything" shortcut by tagging every test.
+    all_marker = pytest.mark.all
+    for item in items:
+        item.add_marker(all_marker)
+
+
+# Fixtures required by upstream FastStream Testcase mixins (see
+# faststream/tests/conftest.py). Kept compatible with upstream so the
+# inherited tests run without modification.
+@pytest.fixture()
+def queue() -> str:
+    return str(uuid4())
+
+
+@pytest.fixture()
+def event() -> asyncio.Event:
+    return asyncio.Event()
+
+
+@pytest.fixture()
+def mock() -> Generator[MagicMock, None, None]:
+    m = MagicMock()
+    yield m
+    m.reset_mock()
 
 
 @pytest_asyncio.fixture

@@ -4,10 +4,9 @@ import pytest
 
 from faststream_sqlbroker.sqla.broker.broker import SqlaBroker
 from tests.brokers.base.connection import BrokerConnectionTestcase
-from tests.brokers.sqla.helpers import Settings
+from tests.helpers import Settings
 
 
-@pytest.mark.sqla()
 @pytest.mark.connected()
 class TestConnection(BrokerConnectionTestcase):
     broker = SqlaBroker

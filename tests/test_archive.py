@@ -7,7 +7,6 @@ from faststream_sqlbroker.sqla.client import create_sqla_client
 from faststream_sqlbroker.sqla.message import SqlaInnerMessage, SqlaMessageState
 
 
-@pytest.mark.sqla()
 @pytest.mark.connected()
 @pytest.mark.slow()
 @pytest.mark.asyncio()

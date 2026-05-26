@@ -2,9 +2,9 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import pytest_asyncio
-from faststream import AckPolicy
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from faststream import AckPolicy
 from faststream_sqlbroker.sqla.broker.broker import SqlaBroker
 from faststream_sqlbroker.sqla.broker.router import SqlaRouter
 from faststream_sqlbroker.sqla.retry import NoRetryStrategy

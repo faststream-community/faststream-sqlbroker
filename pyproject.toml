@@ -14,6 +14,7 @@ version = "0.1.0"
 
 dependencies = [
     "faststream>=0.7.0rc1",
+    "pytest-xdist>=3.8.0",
     "sqlalchemy>=2.0.44",
 ]
 
@@ -50,7 +51,6 @@ timeout = 30
 addopts = "--strict-markers --strict-config -q"
 testpaths = ["tests"]
 markers = [
-    "sqla",
     "slow",
     "connected",
     "all",

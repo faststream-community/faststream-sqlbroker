@@ -9,7 +9,6 @@ from tests.brokers.base.router import RouterTestcase
 from .basic import SqlaTestcaseConfig
 
 
-@pytest.mark.sqla()
 @pytest.mark.connected()
 @pytest.mark.slow()
 class TestRouter(SqlaTestcaseConfig, RouterTestcase):
