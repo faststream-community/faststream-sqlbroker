@@ -1,0 +1,15 @@
+site_name: FastStream SQLA Broker
+site_description: SQLA broker for FastStream
+site_url: https://faststream.ag2.ai/sqla/
+
+repo_name: faststream-community/faststream-sqlbroker
+repo_url: https://github.com/faststream-community/faststream-sqlbroker
+edit_uri: blob/main/docs/docs/
+
+docs_dir: docs
+
+nav:
+  - SQLA:
+    - sqla/index.md
+    - Design and Features: sqla/design.md
+    - Tutorial: sqla/tutorial.md
