@@ -42,7 +42,7 @@ git submodule sync
 CI fetches the submodule automatically via `submodules: recursive` on
 `actions/checkout`.
 
-## Docs
+### Docs
 
 Docs live under `docs/` mirroring upstream FastStream's layout
 (`docs/mkdocs.yml`, pages at `docs/docs/sqla/*.md`, code samples at
