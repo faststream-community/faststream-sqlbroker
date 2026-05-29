@@ -3,17 +3,17 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from faststream import AckPolicy
-from faststream_sqlbroker.sqla import SqlaBroker
-from faststream_sqlbroker.sqla.retry import NoRetryStrategy
+from faststream_sqlbroker.sqlbroker import SqlBroker
+from faststream_sqlbroker.sqlbroker.retry import NoRetryStrategy
 
 
 @pytest_asyncio.fixture
-async def broker() -> SqlaBroker:
-    return SqlaBroker(engine=create_async_engine("sqlite+aiosqlite:///:memory:"))
+async def broker() -> SqlBroker:
+    return SqlBroker(engine=create_async_engine("sqlite+aiosqlite:///:memory:"))
 
 
 @pytest.mark.asyncio()
-async def test_warn_on_max_deliveries(broker: SqlaBroker) -> None:
+async def test_warn_on_max_deliveries(broker: SqlBroker) -> None:
     with pytest.warns(
         UserWarning,
         match="max_deliveries violates the at most once processing guarantee",
@@ -34,7 +34,7 @@ async def test_warn_on_max_deliveries(broker: SqlaBroker) -> None:
 
 
 @pytest.mark.asyncio()
-async def test_warn_when_retry_strategy_ignored(broker: SqlaBroker) -> None:
+async def test_warn_when_retry_strategy_ignored(broker: SqlBroker) -> None:
     with pytest.warns(
         UserWarning,
         match="retry_strategy is ignored when AckPolicy.REJECT_ON_ERROR is used",
@@ -55,7 +55,7 @@ async def test_warn_when_retry_strategy_ignored(broker: SqlaBroker) -> None:
 
 
 @pytest.mark.asyncio()
-async def test_warn_when_nack_without_retry_strategy(broker: SqlaBroker) -> None:
+async def test_warn_when_nack_without_retry_strategy(broker: SqlBroker) -> None:
     with pytest.warns(
         UserWarning,
         match="AckPolicy.NACK_ON_ERROR has the same effect as AckPolicy.REJECT_ON_ERROR for this broker",
@@ -76,7 +76,7 @@ async def test_warn_when_nack_without_retry_strategy(broker: SqlaBroker) -> None
 
 
 @pytest.mark.asyncio()
-async def test_warn_when_ack_first_used(broker: SqlaBroker) -> None:
+async def test_warn_when_ack_first_used(broker: SqlBroker) -> None:
     with pytest.warns(
         UserWarning,
         match="AckPolicy.ACK_FIRST has the same effect as AckPolicy.ACK for this broker",

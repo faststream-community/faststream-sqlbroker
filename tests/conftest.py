@@ -25,7 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects import mysql, postgresql
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from faststream_sqlbroker.sqla.message import SqlaMessageState
+from faststream_sqlbroker.sqlbroker.message import SqlBrokerMessageState
 from tests.helpers import Settings
 
 if TYPE_CHECKING:
@@ -84,7 +84,7 @@ async def master_engine(
         case "mysql":
             url = "mysql+asyncmy://broker:brokerpass@localhost:3306/broker"  # pragma: allowlist secret
         case "sqlite":
-            db_root = tmp_path_factory.mktemp(f"sqla-{worker_id}")
+            db_root = tmp_path_factory.mktemp(f"sqlbroker-{worker_id}")
             url = f"sqlite+aiosqlite:///{db_root / 'broker.db'}"
         case _:
             raise ValueError
@@ -163,10 +163,10 @@ async def recreate_tables(engine: AsyncEngine) -> None:
         Column("payload", LargeBinary, nullable=False),
         Column(
             "state",
-            Enum(SqlaMessageState),
+            Enum(SqlBrokerMessageState),
             nullable=False,
             index=True,
-            server_default=SqlaMessageState.PENDING.name,
+            server_default=SqlBrokerMessageState.PENDING.name,
         ),
         Column("attempts_count", BigInteger, nullable=False, default=0),
         Column("deliveries_count", BigInteger, nullable=False, default=0),
@@ -195,7 +195,7 @@ async def recreate_tables(engine: AsyncEngine) -> None:
         Column("queue", String(255), nullable=False, index=True),
         Column("headers", json_type, nullable=True),
         Column("payload", LargeBinary, nullable=False),
-        Column("state", Enum(SqlaMessageState), nullable=False, index=True),
+        Column("state", Enum(SqlBrokerMessageState), nullable=False, index=True),
         Column("attempts_count", BigInteger, nullable=False),
         Column("deliveries_count", BigInteger, nullable=False),
         Column("created_at", timestamp_type, nullable=False),

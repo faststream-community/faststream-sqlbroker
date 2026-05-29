@@ -20,11 +20,11 @@ from sqlalchemy import (
 from sqlalchemy.dialects import mysql, postgresql
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from faststream_sqlbroker.sqla.message import SqlaMessageState
-from tests.basic import SqlaTestcaseConfig
+from faststream_sqlbroker.sqlbroker.message import SqlBrokerMessageState
+from tests.basic import SqlBrokerTestcaseConfig
 
 
-class WrongSqlaMessageState(str, enum.Enum):
+class WrongSqlBrokerMessageState(str, enum.Enum):
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     COMPLETED_FOREVER = "COMPLETED"
@@ -34,7 +34,7 @@ class WrongSqlaMessageState(str, enum.Enum):
 
 @pytest.mark.connected()
 @pytest.mark.slow()
-class TestSchemaValidation(SqlaTestcaseConfig):
+class TestSchemaValidation(SqlBrokerTestcaseConfig):
     @pytest.mark.asyncio()
     async def test_schema_validation_passes(
         self, engine: AsyncEngine, recreate_tables: None
@@ -84,10 +84,10 @@ class TestSchemaValidation(SqlaTestcaseConfig):
             Column("payload", LargeBinary, nullable=False),
             Column(
                 "state",
-                Enum(SqlaMessageState),
+                Enum(SqlBrokerMessageState),
                 nullable=False,
                 index=True,
-                server_default=SqlaMessageState.PENDING.name,
+                server_default=SqlBrokerMessageState.PENDING.name,
             ),
             Column("attempts_count", BigInteger, nullable=False, default=0),
             Column("deliveries_count", BigInteger, nullable=False, default=0),
@@ -115,7 +115,7 @@ class TestSchemaValidation(SqlaTestcaseConfig):
             Column("queue", String(255), nullable=False, index=True),
             Column("headers", json_type, nullable=True),
             Column("payload", LargeBinary, nullable=False),
-            Column("state", Enum(SqlaMessageState), nullable=False, index=True),
+            Column("state", Enum(SqlBrokerMessageState), nullable=False, index=True),
             Column("attempts_count", BigInteger, nullable=False),
             Column("deliveries_count", BigInteger, nullable=False),
             Column("created_at", timestamp_type, nullable=False),
@@ -214,7 +214,7 @@ class TestSchemaValidation(SqlaTestcaseConfig):
             Column("queue", String(255), nullable=False),
             Column("headers", json_type, nullable=True),
             Column("payload", LargeBinary, nullable=False),
-            Column("state", Enum(SqlaMessageState), nullable=False),
+            Column("state", Enum(SqlBrokerMessageState), nullable=False),
             Column("attempts_count", BigInteger, nullable=False),
             Column("deliveries_count", BigInteger, nullable=False),
             Column("created_at", timestamp_type, nullable=False),
@@ -230,7 +230,7 @@ class TestSchemaValidation(SqlaTestcaseConfig):
             Column("queue", String(255), nullable=False),
             Column("headers", json_type, nullable=True),
             Column("payload", LargeBinary, nullable=False),
-            Column("state", Enum(SqlaMessageState), nullable=False),
+            Column("state", Enum(SqlBrokerMessageState), nullable=False),
             Column("attempts_count", BigInteger, nullable=False),
             Column("deliveries_count", BigInteger, nullable=False),
             Column("created_at", timestamp_type, nullable=False),
@@ -258,7 +258,7 @@ class TestSchemaValidation(SqlaTestcaseConfig):
             await conn.execute(text("DROP TABLE IF EXISTS message_archive"))
             await conn.execute(text("DROP TABLE IF EXISTS message"))
             if engine.dialect.name == "postgresql":
-                await conn.execute(text("DROP TYPE IF EXISTS wrongsqlamessagestate"))
+                await conn.execute(text("DROP TYPE IF EXISTS wrongsqlbrokermessagestate"))
 
         match engine.dialect.name:
             case "postgresql":
@@ -283,7 +283,7 @@ class TestSchemaValidation(SqlaTestcaseConfig):
             Column(
                 "payload", String(255), nullable=False
             ),  # wrong: should be LargeBinary
-            Column("state", Enum(SqlaMessageState), nullable=False),
+            Column("state", Enum(SqlBrokerMessageState), nullable=False),
             Column("attempts_count", BigInteger, nullable=False),
             Column("deliveries_count", BigInteger, nullable=False),
             Column(
@@ -302,7 +302,7 @@ class TestSchemaValidation(SqlaTestcaseConfig):
             Column("headers", String(255), nullable=True),  # wrong: should be JSON
             Column("payload", String(255), nullable=False),
             Column(
-                "state", Enum(WrongSqlaMessageState), nullable=False
+                "state", Enum(WrongSqlBrokerMessageState), nullable=False
             ),  # wrong: enum members differ
             Column("attempts_count", BigInteger, nullable=False),
             Column("deliveries_count", BigInteger, nullable=False),
