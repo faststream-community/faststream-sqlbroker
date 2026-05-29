@@ -5,17 +5,17 @@ import pytest
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from faststream_sqlbroker.sqla import SqlaBroker
-from faststream_sqlbroker.sqla.exceptions import DatetimeMissingTimezoneException
+from faststream_sqlbroker.sqlbroker import SqlBroker
+from faststream_sqlbroker.sqlbroker.exceptions import DatetimeMissingTimezoneException
 from tests.brokers.base.publish import BrokerPublishTestcase
 from tests.helpers import as_datetime
 
-from .basic import SqlaTestcaseConfig
+from .basic import SqlBrokerTestcaseConfig
 
 
 @pytest.mark.connected()
 @pytest.mark.slow()
-class TestPublish(SqlaTestcaseConfig, BrokerPublishTestcase):
+class TestPublish(SqlBrokerTestcaseConfig, BrokerPublishTestcase):
     @pytest.mark.asyncio()
     async def test_reply_to(self) -> None: ...
 
@@ -29,7 +29,7 @@ class TestPublish(SqlaTestcaseConfig, BrokerPublishTestcase):
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("mode", ("publish", "publisher"))
     async def test_publish_with_next_attempt_at_without_timezone(
-        self, mode: str, broker: SqlaBroker
+        self, mode: str, broker: SqlBroker
     ) -> None:
         publisher = broker.publisher("default1")
 
@@ -50,7 +50,7 @@ class TestPublish(SqlaTestcaseConfig, BrokerPublishTestcase):
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("mode", ("publish", "publisher"))
     async def test_publish_with_next_attempt_at_converts_timezone_to_utc(
-        self, engine: AsyncEngine, mode: str, broker: SqlaBroker
+        self, engine: AsyncEngine, mode: str, broker: SqlBroker
     ) -> None:
         publisher = broker.publisher("default1")
 
@@ -98,11 +98,11 @@ class TestPublish(SqlaTestcaseConfig, BrokerPublishTestcase):
 
 
 @pytest.mark.connected()
-class TestPublishTransaction(SqlaTestcaseConfig):
+class TestPublishTransaction(SqlBrokerTestcaseConfig):
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("mode", ("publish", "publisher"))
     async def test_publish_wo_transaction(
-        self, engine: AsyncEngine, mode: str, broker: SqlaBroker
+        self, engine: AsyncEngine, mode: str, broker: SqlBroker
     ) -> None:
         publisher = broker.publisher("default1")
 
@@ -119,7 +119,7 @@ class TestPublishTransaction(SqlaTestcaseConfig):
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("mode", ("publish", "publisher"))
     async def test_publish_in_transaction(
-        self, engine: AsyncEngine, mode: str, broker: SqlaBroker
+        self, engine: AsyncEngine, mode: str, broker: SqlBroker
     ) -> None:
         publisher = broker.publisher("default1")
 
@@ -139,7 +139,7 @@ class TestPublishTransaction(SqlaTestcaseConfig):
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("mode", ("publish", "publisher"))
     async def test_publish_in_transaction_rollback(
-        self, engine: AsyncEngine, mode: str, broker: SqlaBroker
+        self, engine: AsyncEngine, mode: str, broker: SqlBroker
     ) -> None:
         publisher = broker.publisher("default1")
 
@@ -160,10 +160,10 @@ class TestPublishTransaction(SqlaTestcaseConfig):
 
 @pytest.mark.connected()
 @pytest.mark.slow()
-class TestPublishBatch(SqlaTestcaseConfig):
+class TestPublishBatch(SqlBrokerTestcaseConfig):
     @pytest.mark.asyncio()
     async def test_publish_batch_inserts_all_messages(
-        self, engine: AsyncEngine, broker: SqlaBroker
+        self, engine: AsyncEngine, broker: SqlBroker
     ) -> None:
         await broker.publish_batch(
             {"message": "hello1"},
@@ -189,7 +189,7 @@ class TestPublishBatch(SqlaTestcaseConfig):
 
     @pytest.mark.asyncio()
     async def test_publish_batch_uses_single_sql_statement(
-        self, engine: AsyncEngine, broker: SqlaBroker
+        self, engine: AsyncEngine, broker: SqlBroker
     ) -> None:
         inserts: list[str] = []
 
@@ -217,7 +217,7 @@ class TestPublishBatch(SqlaTestcaseConfig):
 
     @pytest.mark.asyncio()
     async def test_publish_batch_empty_is_noop(
-        self, engine: AsyncEngine, broker: SqlaBroker
+        self, engine: AsyncEngine, broker: SqlBroker
     ) -> None:
         await broker.publish_batch(queue="batch-queue")
 
@@ -227,7 +227,7 @@ class TestPublishBatch(SqlaTestcaseConfig):
 
     @pytest.mark.asyncio()
     async def test_publish_batch_stores_headers_per_message(
-        self, engine: AsyncEngine, broker: SqlaBroker
+        self, engine: AsyncEngine, broker: SqlBroker
     ) -> None:
         await broker.publish_batch(
             {"message": "hello1"},
@@ -252,7 +252,7 @@ class TestPublishBatch(SqlaTestcaseConfig):
 
     @pytest.mark.asyncio()
     async def test_publish_batch_with_next_attempt_at(
-        self, engine: AsyncEngine, broker: SqlaBroker
+        self, engine: AsyncEngine, broker: SqlBroker
     ) -> None:
         next_attempt_at = datetime.datetime(
             year=2026,
@@ -284,9 +284,7 @@ class TestPublishBatch(SqlaTestcaseConfig):
             assert as_datetime(row.next_attempt_at) == expected
 
     @pytest.mark.asyncio()
-    async def test_publish_batch_without_timezone_raises(
-        self, broker: SqlaBroker
-    ) -> None:
+    async def test_publish_batch_without_timezone_raises(self, broker: SqlBroker) -> None:
         with pytest.raises(DatetimeMissingTimezoneException):
             await broker.publish_batch(
                 {"message": "hello1"},
@@ -297,10 +295,10 @@ class TestPublishBatch(SqlaTestcaseConfig):
 
 
 @pytest.mark.connected()
-class TestPublishBatchTransaction(SqlaTestcaseConfig):
+class TestPublishBatchTransaction(SqlBrokerTestcaseConfig):
     @pytest.mark.asyncio()
     async def test_publish_batch_in_transaction(
-        self, engine: AsyncEngine, broker: SqlaBroker
+        self, engine: AsyncEngine, broker: SqlBroker
     ) -> None:
         async with engine.begin() as conn:
             await broker.publish_batch(
@@ -316,7 +314,7 @@ class TestPublishBatchTransaction(SqlaTestcaseConfig):
 
     @pytest.mark.asyncio()
     async def test_publish_batch_in_transaction_rollback(
-        self, engine: AsyncEngine, broker: SqlaBroker
+        self, engine: AsyncEngine, broker: SqlBroker
     ) -> None:
         async with engine.begin() as conn:
             await broker.publish_batch(

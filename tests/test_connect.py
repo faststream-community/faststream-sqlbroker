@@ -2,14 +2,14 @@ from typing import Any
 
 import pytest
 
-from faststream_sqlbroker.sqla.broker.broker import SqlaBroker
+from faststream_sqlbroker.sqlbroker.broker.broker import SqlBroker
 from tests.brokers.base.connection import BrokerConnectionTestcase
 from tests.helpers import Settings
 
 
 @pytest.mark.connected()
 class TestConnection(BrokerConnectionTestcase):
-    broker = SqlaBroker
+    broker = SqlBroker
 
     def get_broker_args(self, settings: Settings) -> dict[str, Any]:
         return {"engine": settings.engine}

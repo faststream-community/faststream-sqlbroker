@@ -5,13 +5,13 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from faststream import AckPolicy
-from faststream_sqlbroker.sqla.broker.broker import SqlaBroker
-from faststream_sqlbroker.sqla.broker.router import SqlaRouter
-from faststream_sqlbroker.sqla.retry import NoRetryStrategy
+from faststream_sqlbroker.sqlbroker.broker.broker import SqlBroker
+from faststream_sqlbroker.sqlbroker.broker.router import SqlBrokerRouter
+from faststream_sqlbroker.sqlbroker.retry import NoRetryStrategy
 from tests.brokers.base.basic import BaseTestcaseConfig
 
 
-class SqlaTestcaseConfig(BaseTestcaseConfig):
+class SqlBrokerTestcaseConfig(BaseTestcaseConfig):
     _engine: AsyncEngine | None = None
 
     @pytest_asyncio.fixture(autouse=True)
@@ -21,23 +21,23 @@ class SqlaTestcaseConfig(BaseTestcaseConfig):
     def get_broker(
         self,
         **kwargs: Any,
-    ) -> SqlaBroker:
+    ) -> SqlBroker:
         engine = kwargs.pop("engine", None) or self._engine
-        return SqlaBroker(engine=engine, **kwargs)
+        return SqlBroker(engine=engine, **kwargs)
 
     @pytest_asyncio.fixture()
     async def broker(
         self, engine: AsyncEngine, recreate_tables: None
-    ) -> AsyncGenerator[SqlaBroker, None]:
+    ) -> AsyncGenerator[SqlBroker, None]:
         broker = self.get_broker(engine=engine)
         async with broker:
             yield broker
 
-    def patch_broker(self, broker: SqlaBroker, **kwargs: Any) -> SqlaBroker:
+    def patch_broker(self, broker: SqlBroker, **kwargs: Any) -> SqlBroker:
         return broker
 
-    def get_router(self, **kwargs: Any) -> SqlaRouter:
-        return SqlaRouter(**kwargs)
+    def get_router(self, **kwargs: Any) -> SqlBrokerRouter:
+        return SqlBrokerRouter(**kwargs)
 
     def get_subscriber_params(
         self,

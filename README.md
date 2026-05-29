@@ -45,8 +45,8 @@ CI fetches the submodule automatically via `submodules: recursive` on
 ### Docs
 
 Docs live under `docs/` mirroring upstream FastStream's layout
-(`docs/mkdocs.yml`, pages at `docs/docs/sqla/*.md`, code samples at
-`docs/docs_src/sqla/*.py`). The upstream FastStream site pulls them in at
+(`docs/mkdocs.yml`, pages at `docs/docs/sqlbroker/*.md`, code samples at
+`docs/docs_src/sqlbroker/*.py`). The upstream FastStream site pulls them in at
 build time via
 [`mkdocs-multirepo-plugin`](https://github.com/jdoiro3/mkdocs-multirepo-plugin):
 its `navigation_template.txt` carries an `!import` pointing at this repo's

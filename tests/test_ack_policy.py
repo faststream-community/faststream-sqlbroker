@@ -10,26 +10,26 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from faststream import AckPolicy
-from faststream_sqlbroker.sqla import SqlaBroker
-from faststream_sqlbroker.sqla.annotations import (
-    SqlaMessage as SqlaMessageAnnotation,
+from faststream_sqlbroker.sqlbroker import SqlBroker
+from faststream_sqlbroker.sqlbroker.annotations import (
+    SqlBrokerMessage as SqlBrokerMessageAnnotation,
 )
-from faststream_sqlbroker.sqla.message import SqlaMessageState
-from faststream_sqlbroker.sqla.retry import ConstantRetryStrategy
-from tests.basic import SqlaTestcaseConfig
+from faststream_sqlbroker.sqlbroker.message import SqlBrokerMessageState
+from faststream_sqlbroker.sqlbroker.retry import ConstantRetryStrategy
+from tests.basic import SqlBrokerTestcaseConfig
 from tests.helpers import as_datetime
 
 
 @pytest.mark.connected()
 @pytest.mark.slow()
-class TestConsumeAckPolicy(SqlaTestcaseConfig):
+class TestConsumeAckPolicy(SqlBrokerTestcaseConfig):
     @pytest.mark.asyncio()
     async def test_consume_nack_on_error(
         self,
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """Message was Nack'ed."""
 
@@ -62,7 +62,7 @@ class TestConsumeAckPolicy(SqlaTestcaseConfig):
         result = result.mappings().one()
         assert result["queue"] == "default1"
         assert json.loads(result["payload"]) == {"message": "hello1"}
-        assert result["state"] == SqlaMessageState.RETRYABLE.name
+        assert result["state"] == SqlBrokerMessageState.RETRYABLE.name
         assert result["attempts_count"] == 1
         assert result["deliveries_count"] == 1
         assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
@@ -87,7 +87,7 @@ class TestConsumeAckPolicy(SqlaTestcaseConfig):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """Message was Reject'ed despite the retry strategy."""
 
@@ -120,7 +120,7 @@ class TestConsumeAckPolicy(SqlaTestcaseConfig):
         result = result.mappings().one()
         assert result["queue"] == "default1"
         assert json.loads(result["payload"]) == {"message": "hello1"}
-        assert result["state"] == SqlaMessageState.FAILED.name
+        assert result["state"] == SqlBrokerMessageState.FAILED.name
         assert result["attempts_count"] == 1
         assert result["deliveries_count"] == 1
         assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
@@ -149,7 +149,7 @@ class TestConsumeAckPolicy(SqlaTestcaseConfig):
         recreate_tables: None,
         event: asyncio.Event,
         ack_policy: AckPolicy,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """Message was Ack'ed despite the error."""
 
@@ -180,7 +180,7 @@ class TestConsumeAckPolicy(SqlaTestcaseConfig):
         result = result.mappings().one()
         assert result["queue"] == "default1"
         assert json.loads(result["payload"]) == {"message": "hello1"}
-        assert result["state"] == SqlaMessageState.COMPLETED.name
+        assert result["state"] == SqlBrokerMessageState.COMPLETED.name
         assert result["attempts_count"] == 1
         assert result["deliveries_count"] == 1
         assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
@@ -207,7 +207,7 @@ class TestConsumeAckPolicy(SqlaTestcaseConfig):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """Message was manually Ack'ed."""
 
@@ -227,7 +227,7 @@ class TestConsumeAckPolicy(SqlaTestcaseConfig):
             max_deliveries=20,
             ack_policy=AckPolicy.MANUAL,
         )
-        async def handler(msg: SqlaMessageAnnotation) -> None:
+        async def handler(msg: SqlBrokerMessageAnnotation) -> None:
             await msg.ack()
             return 1 / 0
 
@@ -241,7 +241,7 @@ class TestConsumeAckPolicy(SqlaTestcaseConfig):
         result = result.mappings().one()
         assert result["queue"] == "default1"
         assert json.loads(result["payload"]) == {"message": "hello1"}
-        assert result["state"] == SqlaMessageState.COMPLETED.name
+        assert result["state"] == SqlBrokerMessageState.COMPLETED.name
         assert result["attempts_count"] == 1
         assert result["deliveries_count"] == 1
         assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
@@ -288,7 +288,7 @@ class TestConsumeAckPolicy(SqlaTestcaseConfig):
                 max_deliveries=20,
                 ack_policy=AckPolicy.MANUAL,
             )
-            async def handler(msg: SqlaMessageAnnotation) -> None:
+            async def handler(msg: SqlBrokerMessageAnnotation) -> None:
                 return
 
             await broker.publish({"message": "hello1"}, queue="default1")
@@ -305,4 +305,4 @@ class TestConsumeAckPolicy(SqlaTestcaseConfig):
             result = result.mappings().one()
             assert result["queue"] == "default1"
             assert json.loads(result["payload"]) == {"message": "hello1"}
-            assert result["state"] == SqlaMessageState.FAILED.name
+            assert result["state"] == SqlBrokerMessageState.FAILED.name

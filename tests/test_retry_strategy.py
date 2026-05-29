@@ -1,7 +1,7 @@
 import random
 from datetime import datetime, timedelta, timezone
 
-from faststream_sqlbroker.sqla.retry import (
+from faststream_sqlbroker.sqlbroker.retry import (
     ConstantRetryStrategy,
     ConstantWithJitterRetryStrategy,
     ExponentialBackoffRetryStrategy,

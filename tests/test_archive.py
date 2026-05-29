@@ -3,8 +3,11 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from faststream_sqlbroker.sqla.client import create_sqla_client
-from faststream_sqlbroker.sqla.message import SqlaInnerMessage, SqlaMessageState
+from faststream_sqlbroker.sqlbroker.client import create_sqlbroker_client
+from faststream_sqlbroker.sqlbroker.message import (
+    SqlBrokerInnerMessage,
+    SqlBrokerMessageState,
+)
 
 
 @pytest.mark.connected()
@@ -13,18 +16,18 @@ from faststream_sqlbroker.sqla.message import SqlaInnerMessage, SqlaMessageState
 async def test_archive_on_conflict_do_nothing(
     engine: AsyncEngine, recreate_tables: None
 ) -> None:
-    client = create_sqla_client(
+    client = create_sqlbroker_client(
         engine,
         message_table_name="message",
         message_archive_table_name="message_archive",
     )
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    message = SqlaInnerMessage(
+    message = SqlBrokerInnerMessage(
         id=1,
         queue="default1",
         headers={},
         payload=b"payload",
-        state=SqlaMessageState.COMPLETED,
+        state=SqlBrokerMessageState.COMPLETED,
         attempts_count=2,
         deliveries_count=1,
         created_at=now,

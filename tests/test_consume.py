@@ -15,21 +15,21 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from faststream import AckPolicy
-from faststream_sqlbroker.sqla.annotations import (
-    SqlaBroker as SqlaBrokerAnnotation,
-    SqlaMessage as SqlaMessageAnnotation,
+from faststream_sqlbroker.sqlbroker.annotations import (
+    SqlBroker as SqlBrokerAnnotation,
+    SqlBrokerMessage as SqlBrokerMessageAnnotation,
 )
-from faststream_sqlbroker.sqla.broker.broker import SqlaBroker
-from faststream_sqlbroker.sqla.message import SqlaMessage, SqlaMessageState
-from faststream_sqlbroker.sqla.retry import ConstantRetryStrategy, NoRetryStrategy
-from tests.basic import SqlaTestcaseConfig
+from faststream_sqlbroker.sqlbroker.broker.broker import SqlBroker
+from faststream_sqlbroker.sqlbroker.message import SqlBrokerMessage, SqlBrokerMessageState
+from faststream_sqlbroker.sqlbroker.retry import ConstantRetryStrategy, NoRetryStrategy
+from tests.basic import SqlBrokerTestcaseConfig
 from tests.brokers.base.consume import BrokerRealConsumeTestcase
 from tests.helpers import as_datetime
 
 
 @pytest.mark.connected()
 @pytest.mark.slow()
-class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
+class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
     async def test_get_one_conflicts_with_handler(self) -> None: ...
 
     async def test_get_one(self) -> None: ...
@@ -44,7 +44,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """Message was processed and archived."""
         attempted = []
@@ -79,7 +79,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         result = result.mappings().one()
         assert result["queue"] == "default1"
         assert json.loads(result["payload"]) == {"message": "hello1"}
-        assert result["state"] == SqlaMessageState.COMPLETED.name
+        assert result["state"] == SqlBrokerMessageState.COMPLETED.name
         assert result["attempts_count"] == 1
         assert result["deliveries_count"] == 1
         assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
@@ -105,7 +105,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """On exception message was marked as retryable with next attempts scheduled."""
 
@@ -138,7 +138,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         result = result.mappings().one()
         assert result["queue"] == "default1"
         assert json.loads(result["payload"]) == {"message": "hello1"}
-        assert result["state"] == SqlaMessageState.RETRYABLE.name
+        assert result["state"] == SqlBrokerMessageState.RETRYABLE.name
         assert result["attempts_count"] == 1
         assert result["deliveries_count"] == 1
         assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
@@ -163,7 +163,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """On exception message was marked as failed and was archived."""
 
@@ -194,7 +194,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         result = result.mappings().one()
         assert result["queue"] == "default1"
         assert json.loads(result["payload"]) == {"message": "hello1"}
-        assert result["state"] == SqlaMessageState.FAILED.name
+        assert result["state"] == SqlBrokerMessageState.FAILED.name
         assert result["attempts_count"] == 1
         assert result["deliveries_count"] == 1
         assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
@@ -266,7 +266,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
                 result = await conn.execute(text("SELECT * FROM message;"))
 
             result = result.mappings().one()
-            assert result["state"] == SqlaMessageState.PROCESSING.name
+            assert result["state"] == SqlBrokerMessageState.PROCESSING.name
             assert result["attempts_count"] == 0
             assert result["deliveries_count"] == 1
 
@@ -282,7 +282,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
                 result = result.mappings().one()
                 assert result["queue"] == "default1"
                 assert json.loads(result["payload"]) == {"message": "hello1"}
-                assert result["state"] == SqlaMessageState.FAILED.name
+                assert result["state"] == SqlBrokerMessageState.FAILED.name
                 assert result["attempts_count"] == 0
                 assert result["deliveries_count"] == 2
                 assert as_datetime(result["created_at"]) < datetime.now(
@@ -307,7 +307,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         attempted = []
 
@@ -344,7 +344,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         result = result.mappings().one()
         assert result["queue"] == "default1"
         assert json.loads(result["payload"]) == {"message": "hello1"}
-        assert result["state"] == SqlaMessageState.FAILED.name
+        assert result["state"] == SqlBrokerMessageState.FAILED.name
         assert result["attempts_count"] == 3
         assert result["deliveries_count"] == 3
         assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
@@ -367,7 +367,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """On exception message was marked as failed and was archived."""
 
@@ -398,7 +398,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         result = result.mappings().one()
         assert result["queue"] == "default1"
         assert json.loads(result["payload"]) == {"message": "hello1"}
-        assert result["state"] == SqlaMessageState.FAILED.name
+        assert result["state"] == SqlBrokerMessageState.FAILED.name
         assert result["attempts_count"] == 1
         assert result["deliveries_count"] == 1
         assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
@@ -425,7 +425,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """Messages from the specified queues were consumed."""
         messages = []
@@ -465,7 +465,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         messages = []
 
@@ -514,7 +514,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """Processing of attempted messages completed and results were flushed.
         Acquired but not attempted messages were requeued.
@@ -555,7 +555,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
 
         result_1 = result_1.mappings().all()
         assert len(result_1) == 2
-        assert result_1[0]["state"] == SqlaMessageState.COMPLETED.name
+        assert result_1[0]["state"] == SqlBrokerMessageState.COMPLETED.name
         assert result_1[0]["attempts_count"] == 1
         assert result_1[0]["deliveries_count"] == 1
         assert as_datetime(result_1[0]["created_at"]) < datetime.now(
@@ -579,7 +579,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
 
         result_2 = result_2.mappings().all()
         assert len(result_2) == 2
-        assert result_2[0]["state"] == SqlaMessageState.PENDING.name
+        assert result_2[0]["state"] == SqlBrokerMessageState.PENDING.name
         assert result_2[0]["attempts_count"] == 0
         assert result_2[0]["deliveries_count"] == 0
         assert as_datetime(result_2[0]["created_at"]) < datetime.now(
@@ -598,7 +598,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """Manual Ack overrode automatic Reject."""
 
@@ -616,7 +616,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
             max_deliveries=20,
             ack_policy=AckPolicy.NACK_ON_ERROR,
         )
-        async def handler(msg: SqlaMessageAnnotation, msg_body: dict) -> None:
+        async def handler(msg: SqlBrokerMessageAnnotation, msg_body: dict) -> None:
             await msg.ack()
             return 1 / 0
 
@@ -630,8 +630,8 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         result = result.mappings().all()
         assert len(result) == 2
-        assert result[0]["state"] == SqlaMessageState.COMPLETED.name
-        assert result[1]["state"] == SqlaMessageState.COMPLETED.name
+        assert result[0]["state"] == SqlBrokerMessageState.COMPLETED.name
+        assert result[1]["state"] == SqlBrokerMessageState.COMPLETED.name
 
     @pytest.mark.asyncio()
     async def test_consume_manual_nack_takes_precedence(
@@ -639,7 +639,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """Manual Nack overrode automatic Ack."""
 
@@ -659,7 +659,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
             max_deliveries=20,
             ack_policy=AckPolicy.NACK_ON_ERROR,
         )
-        async def handler(msg: SqlaMessageAnnotation, msg_body: dict) -> None:
+        async def handler(msg: SqlBrokerMessageAnnotation, msg_body: dict) -> None:
             await msg.nack()
 
         await broker.publish({"message": "hello1"}, queue="default1")
@@ -672,8 +672,8 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message;"))
         result = result.mappings().all()
         assert len(result) == 2
-        assert result[0]["state"] == SqlaMessageState.RETRYABLE.name
-        assert result[1]["state"] == SqlaMessageState.RETRYABLE.name
+        assert result[0]["state"] == SqlBrokerMessageState.RETRYABLE.name
+        assert result[1]["state"] == SqlBrokerMessageState.RETRYABLE.name
 
     @pytest.mark.asyncio()
     async def test_consume_manual_reject_takes_precedence(
@@ -681,7 +681,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         """Manual Reject overrode automatic Ack."""
 
@@ -701,7 +701,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
             max_deliveries=20,
             ack_policy=AckPolicy.NACK_ON_ERROR,
         )
-        async def handler(msg: SqlaMessageAnnotation, msg_body: dict) -> None:
+        async def handler(msg: SqlBrokerMessageAnnotation, msg_body: dict) -> None:
             await msg.reject()
 
         await broker.publish({"message": "hello1"}, queue="default1")
@@ -714,8 +714,8 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         result = result.mappings().all()
         assert len(result) == 2
-        assert result[0]["state"] == SqlaMessageState.FAILED.name
-        assert result[1]["state"] == SqlaMessageState.FAILED.name
+        assert result[0]["state"] == SqlBrokerMessageState.FAILED.name
+        assert result[1]["state"] == SqlBrokerMessageState.FAILED.name
 
     @pytest.mark.asyncio()
     async def test_consume_context_fields(
@@ -723,7 +723,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         body_ = None
         message_ = None
@@ -747,8 +747,8 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         )
         async def handler(
             body: Any,
-            message: SqlaMessageAnnotation,
-            broker: SqlaBrokerAnnotation,
+            message: SqlBrokerMessageAnnotation,
+            broker: SqlBrokerAnnotation,
             context: ContextRepoAnnotation,
             logger: LoggerAnnotation,
         ) -> None:
@@ -767,12 +767,12 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         await asyncio.wait_for(event.wait(), timeout=self.timeout)
 
         assert body_ == {"message": "hello1"}
-        assert isinstance(message_, SqlaMessage)
+        assert isinstance(message_, SqlBrokerMessage)
         assert message_.headers == {
             "content-type": "application/json",
             "header_1": "value_1",
         }
-        assert isinstance(broker_, SqlaBroker)
+        assert isinstance(broker_, SqlBroker)
         assert isinstance(context_, ContextRepo)
         assert isinstance(logger_, logging.Logger)
 
@@ -782,7 +782,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
         engine: AsyncEngine,
         recreate_tables: None,
         event: asyncio.Event,
-        broker: SqlaBroker,
+        broker: SqlBroker,
     ) -> None:
         attempted = []
 
@@ -831,7 +831,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
 
     @pytest.mark.asyncio()
     async def test_consume_fetch_intervals_fetch_on_freed_capacity(
-        self, engine: AsyncEngine, recreate_tables: None, broker: SqlaBroker
+        self, engine: AsyncEngine, recreate_tables: None, broker: SqlBroker
     ) -> None:
         """After first batch was fully processed, next fetch
         happened immediately.
@@ -866,7 +866,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
 
     @pytest.mark.asyncio()
     async def test_consume_fetch_intervals_immediate_fetch_to_fill_capacity(
-        self, engine: AsyncEngine, recreate_tables: None, broker: SqlaBroker
+        self, engine: AsyncEngine, recreate_tables: None, broker: SqlBroker
     ) -> None:
         """After first fetch, next fetch happened immediately to
         fill up capacity, because of the overfetch factor.
@@ -901,7 +901,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
 
     @pytest.mark.asyncio()
     async def test_consume_fetch_intervals_nonfull_fetch(
-        self, engine: AsyncEngine, recreate_tables: None, broker: SqlaBroker
+        self, engine: AsyncEngine, recreate_tables: None, broker: SqlBroker
     ) -> None:
         """Because the first fetch wasn't full, next fetch happened after
         max_fetch_interval despite batch being exhausted.
@@ -981,7 +981,7 @@ class TestConsume(SqlaTestcaseConfig, BrokerRealConsumeTestcase):
                 result = await conn.execute(text("SELECT * FROM message;"))
             result = result.mappings().all()
             assert len(result) == 2
-            assert result[0]["state"] == SqlaMessageState.PROCESSING.name
+            assert result[0]["state"] == SqlBrokerMessageState.PROCESSING.name
             assert result[0]["attempts_count"] == 0
             assert result[0]["deliveries_count"] == 1
 
