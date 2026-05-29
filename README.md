@@ -1,3 +1,6 @@
+[![Downloads](https://static.pepy.tech/personalized-badge/faststream-sqlbroker?period=month&units=international_system&left_color=grey&right_color=green&left_text=downloads/month)](https://www.pepy.tech/projects/faststream-sqlbroker)
+[![Package version](https://img.shields.io/pypi/v/faststream-sqlbroker?label=PyPI)](https://pypi.org/project/faststream-sqlbroker)
+
 # faststream-sqlbroker
 
 A SQL-backed broker for [FastStream](https://github.com/ag2ai/FastStream).
