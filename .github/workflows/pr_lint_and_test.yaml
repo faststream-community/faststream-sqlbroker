@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.13"
-      - run: uv sync --group lint
+      - run: uv sync --locked --group lint
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy faststream_sqlbroker
@@ -73,7 +73,7 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --group test
+      - run: uv sync --locked --group test
       - run: uv run pytest -n auto --cov --cov-report= -vv
       - name: Rename coverage file
         run: mkdir coverage && mv .coverage coverage/.coverage.py${{ matrix.python-version }}
