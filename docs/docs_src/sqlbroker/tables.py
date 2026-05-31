@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import MetaData, Table
+
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -7,12 +7,12 @@ from sqlalchemy import (
     DateTime,
     Enum,
     LargeBinary,
-    SmallInteger,
+    MetaData,
     String,
     Table,
 )
 
-from faststream.sqlbroker.message import SqlBrokerMessageState
+from faststream_sqlbroker.sqlbroker.message import SqlBrokerMessageState
 
 metadata = MetaData()
 

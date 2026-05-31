@@ -1,4 +1,4 @@
-from faststream.sqlbroker.retry import (
+from faststream_sqlbroker.sqlbroker.retry import (
     ConstantRetryStrategy,
     ConstantWithJitterRetryStrategy,
     ExponentialBackoffRetryStrategy,
