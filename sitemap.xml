@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://faststream-community.github.io/faststream-sqlbroker/</loc>
+         <lastmod>2026-05-31</lastmod>
+    </url>
+    <url>
+         <loc>https://faststream-community.github.io/faststream-sqlbroker/sqla/design/</loc>
+         <lastmod>2026-05-31</lastmod>
+    </url>
+    <url>
+         <loc>https://faststream-community.github.io/faststream-sqlbroker/sqlbroker/design/</loc>
+         <lastmod>2026-05-31</lastmod>
+    </url>
+    <url>
+         <loc>https://faststream-community.github.io/faststream-sqlbroker/sqlbroker/tutorial/</loc>
+         <lastmod>2026-05-31</lastmod>
+    </url>
+</urlset>
