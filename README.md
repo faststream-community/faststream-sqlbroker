@@ -6,9 +6,10 @@
 
 A SQL-backed broker for [FastStream](https://github.com/ag2ai/FastStream). [Documentation](https://faststream-community.github.io/faststream-sqlbroker/sqlbroker/tutorial/).
 
+
 ## Transactional outbox
 
-Implementing the [transactional outbox pattern](https://microservices.io/patterns/data/transactional-outbox.html){.external-link target="_blank"} becomes as simple as the following.
+Implementing the [transactional outbox pattern](https://microservices.io/patterns/data/transactional-outbox.html) becomes as simple as the following.
 
 Publish messages transactionally with your other database operations.
 
@@ -71,3 +72,7 @@ async def handle_msg(msg_body: dict) -> dict:
     return msg_body
 
 ```
+
+## Origins
+
+Originated as a [PR to FastStream](https://github.com/ag2ai/faststream/pull/2704).
