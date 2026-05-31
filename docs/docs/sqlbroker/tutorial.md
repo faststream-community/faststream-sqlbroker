@@ -9,34 +9,23 @@ search:
 ---
 
 !!! warning "Alpha"
-    `faststream-sqlbroker` is currently in alpha. APIs and behavior may change without notice.
+    `faststream-sqlbroker` is currently in alpha.
 
 # Tutorial
+
+## Motivation
+
+The primary benefit of a message queue built on top of a relational database is the ability to insert messages **transactionally**, atomically with other database operations, thus enabling the [transactional outbox pattern](https://microservices.io/patterns/data/transactional-outbox.html){.external-link target="_blank"}. Also, the relational database is usually the most readily available, already-provisioned piece of infrastructure for a given service.
+
+Given a proper understanding of the trade-offs involved, a relational-database-based queue is an appropriate tool for many low-to-medium throughput, latency-tolerant uses, including as part of a larger messaging flow that involves a "proper" queue (e.g. as an outbox between a service and a queue).
 
 ## Installation
 
 PostgreSQL, MySQL, and SQLite are currently supported.
 
 ```bash
-pip install "faststream[sqlbroker]"
+pip install "faststream-sqlbroker"
 ```
-
-You also need an async driver for your database — the SqlBroker doesn't pin one so you can pick whichever you prefer:
-
-=== "PostgreSQL"
-    ```bash
-    pip install asyncpg
-    ```
-
-=== "MySQL"
-    ```bash
-    pip install asyncmy cryptography
-    ```
-
-=== "SQLite"
-    ```bash
-    pip install aiosqlite
-    ```
 
 ## Database Tables
 
@@ -48,13 +37,8 @@ The SqlBroker requires two tables — `message` (active messages) and `message_a
 
 ## Broker
 
-```python
-from sqlalchemy.ext.asyncio import create_async_engine
-
-from faststream.sqlbroker import SqlBroker
-
-engine = create_async_engine("postgresql+asyncpg://user:pass@localhost/mydb")
-broker = SqlBroker(engine=engine)
+```python linenums="1"
+{!> docs_src/sqlbroker/broker.py !}
 ```
 
 #### Broker parameters
@@ -172,10 +156,10 @@ Implementing the [transactional outbox pattern](https://microservices.io/pattern
 
 Publish messages transactionally with your other database operations.
 ```python linenums="1"
-{!> docs_src/sqlbroker/transactional_outbox.py [ln:1-23]!}
+{!> docs_src/sqlbroker/transactional_outbox.py [ln:1-24]!}
 ```
 
 And relay the messages from the database to another broker.
 ```python linenums="1"
-{!> docs_src/sqlbroker/transactional_outbox.py [ln:26-51]!}
+{!> docs_src/sqlbroker/transactional_outbox.py [ln:27-52]!}
 ```
