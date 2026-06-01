@@ -6,9 +6,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 import sqlalchemy.ext.asyncio as sa_asyncio
-from sqlalchemy import text
-
 from faststream import TestApp
+from sqlalchemy import text
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

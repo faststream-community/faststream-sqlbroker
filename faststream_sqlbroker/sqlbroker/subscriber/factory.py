@@ -1,9 +1,9 @@
 import warnings
 from typing import TYPE_CHECKING, Any
 
+from faststream import AckPolicy
 from faststream._internal.endpoint.subscriber.call_item import CallsCollection
 
-from faststream import AckPolicy
 from faststream_sqlbroker.sqlbroker.configs.subscriber import SqlBrokerSubscriberConfig
 from faststream_sqlbroker.sqlbroker.subscriber.specification import (
     SqlBrokerSubscriberSpecification,

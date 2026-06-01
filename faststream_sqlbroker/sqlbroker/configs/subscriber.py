@@ -1,9 +1,9 @@
 from dataclasses import dataclass, field
 
+from faststream import AckPolicy
 from faststream._internal.configs.endpoint import SubscriberUsecaseConfig
 from faststream._internal.constants import EMPTY
 
-from faststream import AckPolicy
 from faststream_sqlbroker.sqlbroker.configs.broker import SqlBrokerConfig
 from faststream_sqlbroker.sqlbroker.retry import RetryStrategyProto
 

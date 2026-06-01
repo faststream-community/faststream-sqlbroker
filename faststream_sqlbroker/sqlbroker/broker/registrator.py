@@ -1,10 +1,10 @@
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
+from faststream import AckPolicy
 from faststream._internal.broker.registrator import Registrator
 from typing_extensions import override
 
-from faststream import AckPolicy
 from faststream_sqlbroker.sqlbroker.configs.broker import SqlBrokerConfig
 from faststream_sqlbroker.sqlbroker.message import SqlBrokerInnerMessage
 from faststream_sqlbroker.sqlbroker.publisher.factory import create_publisher
