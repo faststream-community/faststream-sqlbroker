@@ -23,6 +23,8 @@ class SqlBrokerSubscriberConfig(SubscriberUsecaseConfig):
     release_stuck_interval: float
     release_stuck_timeout: float
     max_deliveries: int | None
+    retain_in_archive_on_ack: bool = True
+    retain_in_archive_on_reject: bool = True
 
     @property
     def ack_policy(self) -> AckPolicy:

@@ -282,34 +282,40 @@ class SqlBrokerBaseClient(ABC):
         async with self._engine.begin() as conn:
             await conn.execute(stmt, params)
 
-    async def archive(self, messages: Sequence[SqlBrokerInnerMessage]) -> None:
-        if not messages:
+    async def archive(
+        self,
+        messages_to_archive: Sequence[SqlBrokerInnerMessage],
+        messages_to_delete_from_primary: Sequence[SqlBrokerInnerMessage],
+    ) -> None:
+        if not messages_to_archive and not messages_to_delete_from_primary:
             return
         async with self._engine.begin() as conn:
-            values = [
-                {
-                    "id": msg.id,
-                    "queue": msg.queue,
-                    "payload": msg.payload,
-                    "headers": msg.headers,
-                    "state": msg.state,
-                    "attempts_count": msg.attempts_count,
-                    "deliveries_count": msg.deliveries_count,
-                    "created_at": msg.created_at,
-                    "first_attempt_at": msg.first_attempt_at,
-                    "last_attempt_at": msg.last_attempt_at,
-                }
-                for msg in messages
-            ]
-            stmt = self._build_archive_insert_stmt(values)
-            await conn.execute(stmt)
-            delete_stmt = (
-                delete(self._message_table)
-                .where(
-                    self._message_table.c.id.in_([item.id for item in messages])
-                )
-            )  # fmt: skip
-            await conn.execute(delete_stmt)
+            if messages_to_archive:
+                values = [
+                    {
+                        "id": msg.id,
+                        "queue": msg.queue,
+                        "payload": msg.payload,
+                        "headers": msg.headers,
+                        "state": msg.state,
+                        "attempts_count": msg.attempts_count,
+                        "deliveries_count": msg.deliveries_count,
+                        "created_at": msg.created_at,
+                        "first_attempt_at": msg.first_attempt_at,
+                        "last_attempt_at": msg.last_attempt_at,
+                    }
+                    for msg in messages_to_archive
+                ]
+                stmt = self._build_archive_insert_stmt(values)
+                await conn.execute(stmt)
+            if messages_to_delete_from_primary:
+                delete_stmt = (
+                    delete(self._message_table)
+                    .where(
+                        self._message_table.c.id.in_([item.id for item in messages_to_delete_from_primary])
+                    )
+                )  # fmt: skip
+                await conn.execute(delete_stmt)
 
     async def release_stuck(self, timeout: float) -> None:
         now = datetime.now(timezone.utc).replace(tzinfo=None)

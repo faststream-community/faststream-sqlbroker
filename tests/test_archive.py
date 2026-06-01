@@ -55,8 +55,8 @@ async def test_archive_on_conflict_do_nothing(
             )
         )
 
-    await client.archive([message])
-    await client.archive([message])
+    await client.archive([message], [message])
+    await client.archive([message], [message])
 
     async with engine.begin() as conn:
         archived = await conn.execute(

@@ -97,6 +97,8 @@ When `connection` is provided, the message insert participates in the same datab
 - **`release_stuck_timeout`** — Interval since `acquired_at` after which a [`PROCESSING`](../sqlbroker/design.md#message-lifecycle){.internal-link} message is considered stuck and is released back to [`PENDING`](../sqlbroker/design.md#message-lifecycle){.internal-link}.
 - **`max_deliveries`** — Maximum number of deliveries allowed for a message. If set, messages that have reached this limit are Reject'ed to [`FAILED`](../sqlbroker/design.md#message-lifecycle){.internal-link} without processing. Note that this might violate the [at-least-once](../sqlbroker/design.md#poison-message-protection){.internal-link} processing semantics.
 - **`ack_policy`** — [`AckPolicy`](../getting-started/acknowledgement.md){.internal-link} that controls acknowledgement behavior.
+- **`retain_in_archive_on_ack`** — If `True` (default), [`COMPLETED`](../sqlbroker/design.md#message-lifecycle){.internal-link} (Ack'ed) messages, in addition to being removed from the primary table, are also persisted in the archive table.
+- **`retain_in_archive_on_reject`** — If `True` (default), [`FAILED`](../sqlbroker/design.md#message-lifecycle){.internal-link} (Reject'ed) messages, in addition to being removed from the primary table, are also persisted in the archive table, where they serve as a [dead-letter queue](../sqlbroker/design.md#dead-letter-queue){.internal-link}.
 
 ### Delayed retries
 

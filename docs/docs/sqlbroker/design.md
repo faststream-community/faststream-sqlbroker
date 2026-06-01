@@ -17,7 +17,7 @@ search:
 
 A published message starts out as `PENDING`. When it is acquired by a worker, it is marked as `PROCESSING`, which prevents it from being acquired by other worker processes. If the maximum allowed number of deliveries is configured and exceeded, the message is marked as `FAILED`. If not, the message is processed. If processing didn't raise an exception or if the message was manually Ack'ed in the handler, it is marked as `COMPLETED`. If the message was manually Nack'ed or Reject'ed or if processing raised an exception and [`AckPolicy`](../getting-started/acknowledgement.md){.internal-link} was set to `REJECT_ON_ERROR` or `NACK_ON_ERROR`, the message is Nack'ed or Reject'ed. Reject'ed messages are marked as `FAILED`. For Nack'ed messages, the retry policy determines if the message is allowed to be retried. If retry is allowed, the message is marked as `RETRYABLE`. If not, the message is marked as `FAILED`.
 
-`PENDING`, `PROCESSING`, and `RETRYABLE` messages reside in the main table, while `COMPLETED` and `FAILED` messages are moved to the archive table on status change.
+`PENDING`, `PROCESSING`, and `RETRYABLE` messages reside in the main table. On status change, `COMPLETED` and `FAILED` messages are removed from the main table and, depending on `retain_in_archive_on_ack` and `retain_in_archive_on_reject`, copied to the archive table.
 
 ```mermaid
 flowchart TD
@@ -41,7 +41,7 @@ On start, the subscriber spawns four types of concurrent loops:
 
 **2. Worker loops** (`max_workers` concurrent instances) &mdash; Each worker takes a message from the internal queue and first checks if `max_deliveries` has been exceeded; if so, the message is Rejected without processing. Otherwise, processing proceeds. Depending on the processing result, [`AckPolicy`](../getting-started/acknowledgement.md){.internal-link}, and manual Ack/Nack/Reject, the message is Ack'ed, Nack'ed, or Rejected. For Nack'ed messages, the `retry_strategy` is consulted to determine if and when the message might be retried. If allowed to be retried, the message is marked as `RETRYABLE`; otherwise as `FAILED`. Ack'ed messages are marked as `COMPLETED` and rejected messages are marked as `FAILED`. The message is then buffered for flushing.
 
-**3. Flush loop** &mdash; Periodically flushes the buffered message state changes to the database. `COMPLETED` and `FAILED` messages are moved from the primary table to the archive table. The state of `RETRYABLE` messages is updated in the primary table.
+**3. Flush loop** &mdash; Periodically flushes the buffered message state changes to the database. `COMPLETED` and `FAILED` messages are removed from the primary table and, depending on `retain_in_archive_on_ack` and `retain_in_archive_on_reject`, copied to the archive table. The state of `RETRYABLE` messages is updated in the primary table.
 
 **4. Release stuck loop** &mdash; Periodically releases messages that have been stuck in `PROCESSING` state for longer than `release_stuck_timeout` since `acquired_at`. These messages are marked back as `PENDING`.
 
@@ -68,6 +68,10 @@ This design opts for separate short-lived transactions instead of a single one. 
 ### Poison Message Protection
 
 Setting `max_deliveries` to a non-`None` value provides protection from the [poison message problem](https://www.rabbitmq.com/docs/quorum-queues#poison-message-handling){.external-link target="_blank"} (messages that crash the worker without the ability to catch the exception, e.g. due to OOM terminations) because `deliveries_count` is incremented and `max_deliveries` is checked prior to a processing attempt. However, this comes at the expense of potentially over-counting deliveries, especially for messages that are being processed concurrently with the poison message (a crash would leave them with incremented `deliveries_count` despite possibly not having been processed), and violating the at-most-once processing semantics.
+
+### Dead Letter Queue
+
+The archive table doubles as a dead-letter queue: if `retain_in_archive_on_reject` parameter is `True` (default), messages that were Reject'ed are archived there.
 
 ### Ordered Processing
 
@@ -244,6 +248,8 @@ As of now, `LISTEN/NOTIFY` is not supported.
     ```
 
 ### Archive Messages
+
+When `retain_in_archive_on_ack` (for `COMPLETED` messages) or `retain_in_archive_on_reject` (for `FAILED` messages) is `False`, the `INSERT INTO message_archive` is skipped for those messages.
 
 === "PostgreSQL"
     ```sql linenums="1"

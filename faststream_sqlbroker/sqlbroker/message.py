@@ -60,7 +60,6 @@ class SqlBrokerInnerMessage:
         self.acquired_at = acquired_at
 
         self.state_set = False
-        self.to_archive = False
 
     async def ack(self) -> None:
         await self._update_state_if_not_set(self._ack)
@@ -110,7 +109,6 @@ class SqlBrokerInnerMessage:
 
     def _mark_completed(self) -> None:
         self.state = SqlBrokerMessageState.COMPLETED
-        self.to_archive = True
 
     def _mark_retryable(self, *, next_attempt_at: datetime) -> None:
         self.state = SqlBrokerMessageState.RETRYABLE
@@ -118,7 +116,6 @@ class SqlBrokerInnerMessage:
 
     def _mark_failed(self) -> None:
         self.state = SqlBrokerMessageState.FAILED
-        self.to_archive = True
 
     def _mark_pending(self) -> None:
         self.state = SqlBrokerMessageState.PENDING
