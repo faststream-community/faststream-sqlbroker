@@ -6,10 +6,10 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from faststream import AckPolicy
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from faststream import AckPolicy
 from faststream_sqlbroker.sqlbroker import SqlBroker
 from faststream_sqlbroker.sqlbroker.annotations import (
     SqlBrokerMessage as SqlBrokerMessageAnnotation,

@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from faststream import AckPolicy
 from faststream._internal.context import ContextRepo
 from faststream.annotations import (
     ContextRepo as ContextRepoAnnotation,
@@ -14,7 +15,6 @@ from faststream.annotations import (
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from faststream import AckPolicy
 from faststream_sqlbroker.sqlbroker.annotations import (
     SqlBroker as SqlBrokerAnnotation,
     SqlBrokerMessage as SqlBrokerMessageAnnotation,

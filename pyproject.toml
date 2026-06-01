@@ -59,8 +59,9 @@ dev = [
 [tool.pytest.ini_options]
 minversion = "7.0"
 timeout = 30
-addopts = "--strict-markers --strict-config -q"
+addopts = "--strict-markers --strict-config -q --ignore=tests/faststream"
 testpaths = ["tests"]
+norecursedirs = ["tests/faststream"]
 markers = [
     "slow",
     "connected",

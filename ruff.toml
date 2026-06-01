@@ -17,9 +17,7 @@ include = [
     "pyproject.toml",
 ]
 
-exclude = [
-    "docs/docs_src"
-]
+exclude = ["docs/docs_src", "tests/faststream"]
 
 [format]
 quote-style = "double"
