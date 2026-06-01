@@ -16,7 +16,7 @@ async def broker() -> SqlBroker:
 async def test_warn_on_max_deliveries(broker: SqlBroker) -> None:
     with pytest.warns(
         UserWarning,
-        match="max_deliveries violates the at most once processing guarantee",
+        match="max_deliveries violates the at-most-once processing guarantee",
     ):
         broker.subscriber(
             queues=["test"],

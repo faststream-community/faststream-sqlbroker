@@ -27,6 +27,8 @@ app = FastStream(broker)
     release_stuck_timeout=60*5,
     max_deliveries=10,
     ack_policy=AckPolicy.NACK_ON_ERROR,
+    retain_in_archive_on_ack=True,
+    retain_in_archive_on_reject=True,
 )
 async def handler(msg: str):
     print(msg)

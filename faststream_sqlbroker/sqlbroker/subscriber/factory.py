@@ -29,6 +29,8 @@ def create_subscriber(
     max_deliveries: int | None,
     config: "SqlBrokerConfig",
     ack_policy: "AckPolicy",
+    retain_in_archive_on_ack: bool,
+    retain_in_archive_on_reject: bool,
 ) -> SqlBrokerSubscriber:
     _validate_input_for_misconfiguration(
         queues=queues,
@@ -42,6 +44,8 @@ def create_subscriber(
         release_stuck_interval=release_stuck_interval,
         release_stuck_timeout=release_stuck_timeout,
         max_deliveries=max_deliveries,
+        retain_in_archive_on_ack=retain_in_archive_on_ack,
+        retain_in_archive_on_reject=retain_in_archive_on_reject,
         config=config,
         ack_policy=ack_policy,
     )
@@ -58,6 +62,8 @@ def create_subscriber(
         release_stuck_interval=release_stuck_interval,
         release_stuck_timeout=release_stuck_timeout,
         max_deliveries=max_deliveries,
+        retain_in_archive_on_ack=retain_in_archive_on_ack,
+        retain_in_archive_on_reject=retain_in_archive_on_reject,
         _outer_config=config,
         _ack_policy=ack_policy,
     )
@@ -83,10 +89,12 @@ def _validate_input_for_misconfiguration(
     max_deliveries: int | None,
     config: "SqlBrokerConfig",
     ack_policy: AckPolicy,
+    retain_in_archive_on_ack: bool,
+    retain_in_archive_on_reject: bool,
 ) -> None:
     if max_deliveries is not None:
         warnings.warn(
-            "Be aware the setting max_deliveries violates the at most once "
+            "Be aware the setting max_deliveries violates the at-most-once "
             "processing guarantee.",
             UserWarning,
             stacklevel=4,

@@ -19,7 +19,10 @@ from faststream.exceptions import FeatureNotSupportedException, StopConsume
 from typing_extensions import override
 
 from faststream_sqlbroker.sqlbroker.client import SqlBrokerBaseClient
-from faststream_sqlbroker.sqlbroker.message import SqlBrokerInnerMessage
+from faststream_sqlbroker.sqlbroker.message import (
+    SqlBrokerInnerMessage,
+    SqlBrokerMessageState,
+)
 from faststream_sqlbroker.sqlbroker.parser import SqlBrokerParser
 
 if TYPE_CHECKING:
@@ -68,6 +71,9 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         self.graceful_timeout = self._outer_config.graceful_timeout
         self._release_stuck_timeout = config.release_stuck_timeout
         self._max_deliveries = config.max_deliveries
+
+        self._retain_in_archive_on_ack = config.retain_in_archive_on_ack
+        self._retain_in_archive_on_reject = config.retain_in_archive_on_reject
 
         self._pending_consume_queue: asyncio.Queue[SqlBrokerInnerMessage] = (
             asyncio.Queue()
@@ -268,19 +274,38 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         if not (messages := self._pop_from_result_buffer()):
             return
 
-        to_update = [msg for msg in messages if not msg.to_archive]
-        to_archive = [msg for msg in messages if msg.to_archive]
+        to_update_in_primary, to_persist_in_archive, to_delete_from_primary = [], [], []
+        for message in messages:
+            if (
+                self._retain_in_archive_on_ack
+                and message.state == SqlBrokerMessageState.COMPLETED
+            ) or (
+                self._retain_in_archive_on_reject
+                and message.state == SqlBrokerMessageState.FAILED
+            ):
+                to_persist_in_archive.append(message)
+            if message.state in {
+                SqlBrokerMessageState.COMPLETED,
+                SqlBrokerMessageState.FAILED,
+            }:
+                to_delete_from_primary.append(message)
+            if message.state in {
+                SqlBrokerMessageState.PENDING,
+                SqlBrokerMessageState.PROCESSING,
+                SqlBrokerMessageState.RETRYABLE,
+            }:
+                to_update_in_primary.append(message)
 
         try:
-            await self._client.retry(to_update)
+            await self._client.retry(to_update_in_primary)
         except Exception:
             self._buffer_results(messages)
             raise
 
         try:
-            await self._client.archive(to_archive)
+            await self._client.archive(to_persist_in_archive, to_delete_from_primary)
         except Exception:
-            self._buffer_results(to_archive)
+            self._buffer_results(to_delete_from_primary)
             raise
 
     async def _requeue_pending_consume_queue(self) -> None:

@@ -36,6 +36,8 @@ class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
         release_stuck_timeout: float,
         max_deliveries: int | None = None,
         ack_policy: AckPolicy = AckPolicy.REJECT_ON_ERROR,
+        retain_in_archive_on_ack: bool = True,
+        retain_in_archive_on_reject: bool = True,
         # broker args
         persistent: bool = True,
         dependencies: Iterable["Dependant"] = (),
@@ -99,6 +101,8 @@ class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
             max_deliveries=max_deliveries,
             config=cast("SqlBrokerConfig", self.config),
             ack_policy=ack_policy,
+            retain_in_archive_on_ack=retain_in_archive_on_ack,
+            retain_in_archive_on_reject=retain_in_archive_on_reject,
         )
 
         super().subscriber(subscriber, persistent=persistent)
