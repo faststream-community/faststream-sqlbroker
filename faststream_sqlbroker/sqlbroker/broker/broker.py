@@ -47,7 +47,7 @@ class SqlBroker(
         *,
         engine: AsyncEngine,
         message_table_name: str = "message",
-        message_archive_table_name: str = "message_archive",
+        message_archive_table_name: str | None = "message_archive",
         validate_schema_on_start: bool = True,
         # broker base args
         graceful_timeout: float | None = 15.0,

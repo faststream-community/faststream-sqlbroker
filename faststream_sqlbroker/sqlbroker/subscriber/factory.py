@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any
 
 from faststream import AckPolicy
 from faststream._internal.endpoint.subscriber.call_item import CallsCollection
+from faststream.exceptions import SetupError
 
 from faststream_sqlbroker.sqlbroker.configs.subscriber import SqlBrokerSubscriberConfig
 from faststream_sqlbroker.sqlbroker.subscriber.specification import (
@@ -92,6 +93,18 @@ def _validate_input_for_misconfiguration(
     retain_in_archive_on_ack: bool,
     retain_in_archive_on_reject: bool,
 ) -> None:
+    if (
+        retain_in_archive_on_ack or retain_in_archive_on_reject
+    ) and config.message_archive_table_name is None:
+        msg = (
+            "retain_in_archive_on_ack and retain_in_archive_on_reject require an "
+            "archive table, but the broker was configured without one "
+            "(message_archive_table_name=None). Either set "
+            "message_archive_table_name on the broker or disable both retain options "
+            "on the subscriber."
+        )
+        raise SetupError(msg)
+
     if max_deliveries is not None:
         warnings.warn(
             "Be aware the setting max_deliveries violates the at-most-once "

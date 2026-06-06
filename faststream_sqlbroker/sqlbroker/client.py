@@ -3,7 +3,7 @@ from __future__ import annotations
 import operator
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from faststream.exceptions import FeatureNotSupportedException, SetupError
 from sqlalchemy import (
@@ -43,8 +43,8 @@ if TYPE_CHECKING:
 
 def _define_tables(
     message_table_name: str,
-    message_archive_table_name: str,
-) -> tuple[Table, Table]:
+    message_archive_table_name: str | None,
+) -> tuple[Table, Table | None]:
     metadata = MetaData()
 
     message = Table(
@@ -80,6 +80,9 @@ def _define_tables(
         Column("last_attempt_at", DateTime),
         Column("acquired_at", DateTime),
     )
+
+    if message_archive_table_name is None:
+        return message, None
 
     message_archive = Table(
         message_archive_table_name,
@@ -128,7 +131,7 @@ class SqlBrokerBaseClient(ABC):
         engine: AsyncEngine,
         *,
         message_table: Table,
-        message_archive_table: Table,
+        message_archive_table: Table | None,
     ) -> None:
         self._engine = engine
         self._message_table = message_table
@@ -361,7 +364,9 @@ class SqlBrokerBaseClient(ABC):
 class SqlBrokerPostgresClient(SqlBrokerBaseClient):
     def _build_archive_insert_stmt(self, values: list[dict[str, Any]]) -> Any:
         return (
-            insert_pg(self._message_archive_table).values(values).on_conflict_do_nothing()
+            insert_pg(cast("Table", self._message_archive_table))
+            .values(values)
+            .on_conflict_do_nothing()
         )
 
 
@@ -442,7 +447,9 @@ class SqlBrokerMySqlClient(SqlBrokerPostgresClient):
 
     def _build_archive_insert_stmt(self, values: list[dict[str, Any]]) -> Any:
         return (
-            insert_mysql(self._message_archive_table).values(values).prefix_with("IGNORE")
+            insert_mysql(cast("Table", self._message_archive_table))
+            .values(values)
+            .prefix_with("IGNORE")
         )
 
 
@@ -487,7 +494,7 @@ class SqlBrokerSqliteClient(SqlBrokerBaseClient):
 
     def _build_archive_insert_stmt(self, values: list[dict[str, Any]]) -> Any:
         return (
-            insert_sqlite(self._message_archive_table)
+            insert_sqlite(cast("Table", self._message_archive_table))
             .values(values)
             .on_conflict_do_nothing()
         )
@@ -497,7 +504,7 @@ def create_sqlbroker_client(
     engine: AsyncEngine,
     *,
     message_table_name: str,
-    message_archive_table_name: str,
+    message_archive_table_name: str | None,
 ) -> SqlBrokerBaseClient:
     message_table, message_archive_table = _define_tables(
         message_table_name=message_table_name,

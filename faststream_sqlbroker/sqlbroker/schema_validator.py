@@ -53,9 +53,11 @@ class SchemaValidator:
         self,
         *,
         message_table: Table,
-        message_archive_table: Table,
+        message_archive_table: Table | None,
     ) -> None:
-        self._tables = (message_table, message_archive_table)
+        self._tables = tuple(
+            table for table in (message_table, message_archive_table) if table is not None
+        )
 
     def __call__(self, connection: Connection) -> list[str]:
         insp = inspect(connection)
