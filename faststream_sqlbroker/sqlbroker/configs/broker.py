@@ -19,7 +19,7 @@ class SqlBrokerConfig(BrokerConfig):
     producer: "SqlBrokerProducer" = field(default_factory=ProducerUnset)  # type: ignore[assignment]
     validate_schema_on_start: bool = True
     message_table_name: str = "message"
-    message_archive_table_name: str = "message_archive"
+    message_archive_table_name: str | None = "message_archive"
     engine: AsyncEngine | None = None
     client: SqlBrokerBaseClient | None = None
 

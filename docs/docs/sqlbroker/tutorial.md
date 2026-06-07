@@ -29,7 +29,7 @@ pip install "faststream-sqlbroker"
 
 ## Database Tables
 
-The SqlBroker requires two tables — `message` (active messages) and `message_archive` (completed/failed messages), with table names customizable via the broker's `message_table_name` and `message_archive_table_name` parameters. You can customize the tables to your liking (partition them, add indices, specify more specific data types like `JSONB`, etc.) as long as they generally conform to the following schemas. Schema check is done on startup if the brokers's `validate_schema_on_start` is `True`.
+The SqlBroker uses up to two tables — `message` (active messages) and `message_archive` (completed/failed messages), with table names customizable via the broker's `message_table_name` and `message_archive_table_name` parameters. Set the latter to `None` to omit using archiving on success and [DLQ](../sqlbroker/design.md#dead-letter-queue){.internal-link}. You can customize the tables to your liking (partition them, add indices, specify more specific data types like `JSONB`, etc.) as long as they generally conform to the following schemas. Schema check is done on startup if the brokers's `validate_schema_on_start` is `True`.
 
 ```python linenums="1"
 {!> docs_src/sqlbroker/tables.py !}
@@ -45,7 +45,7 @@ The SqlBroker requires two tables — `message` (active messages) and `message_a
 
 - **`engine`** — SQLAlchemy `AsyncEngine` to use for requests to the database.
 - **`message_table_name`** — Name of the table containing active messages. Defaults to `message`.
-- **`message_archive_table_name`** — Name of the table containing completed/failed messages. Defaults to `message_archive`.
+- **`message_archive_table_name`** — Name of the table containing completed/failed messages. Defaults to `message_archive`. Set to `None` to run without an archive table, in which case subscribers must set both `retain_in_archive_on_ack` and `retain_in_archive_on_reject` to `False`.
 - **`validate_schema_on_start`** — If `True` (default), validates that the configured tables exist and conform to the expected schema.
 - **`graceful_timeout`** — Seconds to wait for in-flight messages to finish processing during shutdown.
 
@@ -97,8 +97,8 @@ When `connection` is provided, the message insert participates in the same datab
 - **`release_stuck_timeout`** — Interval since `acquired_at` after which a [`PROCESSING`](../sqlbroker/design.md#message-lifecycle){.internal-link} message is considered stuck and is released back to [`PENDING`](../sqlbroker/design.md#message-lifecycle){.internal-link}.
 - **`max_deliveries`** — Maximum number of deliveries allowed for a message. If set, messages that have reached this limit are Reject'ed to [`FAILED`](../sqlbroker/design.md#message-lifecycle){.internal-link} without processing. Note that this might violate the [at-least-once](../sqlbroker/design.md#poison-message-protection){.internal-link} processing semantics.
 - **`ack_policy`** — [`AckPolicy`](../getting-started/acknowledgement.md){.internal-link} that controls acknowledgement behavior.
-- **`retain_in_archive_on_ack`** — If `True` (default), [`COMPLETED`](../sqlbroker/design.md#message-lifecycle){.internal-link} (Ack'ed) messages, in addition to being removed from the primary table, are also persisted in the archive table.
-- **`retain_in_archive_on_reject`** — If `True` (default), [`FAILED`](../sqlbroker/design.md#message-lifecycle){.internal-link} (Reject'ed) messages, in addition to being removed from the primary table, are also persisted in the archive table, where they serve as a [dead-letter queue](../sqlbroker/design.md#dead-letter-queue){.internal-link}.
+- **`retain_in_archive_on_ack`** — If `True` (default), [`COMPLETED`](../sqlbroker/design.md#message-lifecycle){.internal-link} (Ack'ed) messages, in addition to being removed from the primary table, are also persisted in the archive table. Requires the broker to define an archive table (`message_archive_table_name`).
+- **`retain_in_archive_on_reject`** — If `True` (default), [`FAILED`](../sqlbroker/design.md#message-lifecycle){.internal-link} (Reject'ed) messages, in addition to being removed from the primary table, are also persisted in the archive table, where they serve as a [dead-letter queue](../sqlbroker/design.md#dead-letter-queue){.internal-link}. Requires the broker to define an archive table (`message_archive_table_name`).
 
 ### Delayed retries
 

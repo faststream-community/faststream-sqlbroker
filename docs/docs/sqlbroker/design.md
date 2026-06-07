@@ -71,7 +71,7 @@ Setting `max_deliveries` to a non-`None` value provides protection from the [poi
 
 ### Dead Letter Queue
 
-The archive table doubles as a dead-letter queue: if `retain_in_archive_on_reject` parameter is `True` (default), messages that were Reject'ed are archived there.
+The archive table doubles as a dead-letter queue: if the broker defines an archive table (`message_archive_table_name`) and `retain_in_archive_on_reject` is `True` (default), `FAILED` messages (Reject'ed, or Nack'ed with retries exhausted) are archived there.
 
 ### Ordered Processing
 
