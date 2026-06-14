@@ -19,6 +19,7 @@ from faststream_sqlbroker.sqlbroker.configs.broker import SqlBrokerConfig
 from faststream_sqlbroker.sqlbroker.message import SqlBrokerInnerMessage
 from faststream_sqlbroker.sqlbroker.publisher.producer import SqlBrokerProducer
 from faststream_sqlbroker.sqlbroker.response import SqlBrokerPublishCommand
+from faststream_sqlbroker.sqlbroker.schema import SqlBrokerSchemaConfig
 
 if TYPE_CHECKING:
     from types import TracebackType
@@ -46,8 +47,7 @@ class SqlBroker(
         self,
         *,
         engine: AsyncEngine,
-        message_table_name: str = "message",
-        message_archive_table_name: str | None = "message_archive",
+        schema: SqlBrokerSchemaConfig | None = None,
         validate_schema_on_start: bool = True,
         # broker base args
         graceful_timeout: float | None = 15.0,
@@ -75,8 +75,7 @@ class SqlBroker(
         config = SqlBrokerConfig(
             producer=None,  # type: ignore[arg-type]
             validate_schema_on_start=validate_schema_on_start,
-            message_table_name=message_table_name,
-            message_archive_table_name=message_archive_table_name,
+            schema=schema or SqlBrokerSchemaConfig(),
             # both args,
             broker_decoder=decoder,
             broker_parser=parser,

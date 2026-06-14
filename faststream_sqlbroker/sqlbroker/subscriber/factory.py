@@ -6,6 +6,7 @@ from faststream._internal.endpoint.subscriber.call_item import CallsCollection
 from faststream.exceptions import SetupError
 
 from faststream_sqlbroker.sqlbroker.configs.subscriber import SqlBrokerSubscriberConfig
+from faststream_sqlbroker.sqlbroker.retry import NoRetryStrategy
 from faststream_sqlbroker.sqlbroker.subscriber.specification import (
     SqlBrokerSubscriberSpecification,
 )
@@ -113,7 +114,11 @@ def _validate_input_for_misconfiguration(
             stacklevel=4,
         )
 
-    if ack_policy is AckPolicy.REJECT_ON_ERROR and retry_strategy is not None:
+    if (
+        ack_policy is AckPolicy.REJECT_ON_ERROR
+        and retry_strategy is not None
+        and not isinstance(retry_strategy, NoRetryStrategy)
+    ):
         warnings.warn(
             "Be aware that retry_strategy is ignored when AckPolicy.REJECT_ON_ERROR "
             "is used.",

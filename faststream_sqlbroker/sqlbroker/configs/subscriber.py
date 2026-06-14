@@ -29,5 +29,5 @@ class SqlBrokerSubscriberConfig(SubscriberUsecaseConfig):
     @property
     def ack_policy(self) -> AckPolicy:
         if self._ack_policy is EMPTY:
-            return AckPolicy.NACK_ON_ERROR
+            return AckPolicy.REJECT_ON_ERROR
         return self._ack_policy

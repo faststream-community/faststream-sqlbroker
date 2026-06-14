@@ -8,7 +8,7 @@ from typing_extensions import override
 from faststream_sqlbroker.sqlbroker.configs.broker import SqlBrokerConfig
 from faststream_sqlbroker.sqlbroker.message import SqlBrokerInnerMessage
 from faststream_sqlbroker.sqlbroker.publisher.factory import create_publisher
-from faststream_sqlbroker.sqlbroker.retry import RetryStrategyProto
+from faststream_sqlbroker.sqlbroker.retry import NoRetryStrategy, RetryStrategyProto
 from faststream_sqlbroker.sqlbroker.subscriber.factory import create_subscriber
 
 if TYPE_CHECKING:
@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from faststream_sqlbroker.sqlbroker.publisher.usecase import LogicPublisher
     from faststream_sqlbroker.sqlbroker.subscriber.usecase import SqlBrokerSubscriber
 
+_DEFAULT_RETRY_STRATEGY = NoRetryStrategy()
+
 
 class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
     @override
@@ -26,14 +28,14 @@ class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
         queues: list[str],
         *,
         max_workers: int = 1,
-        retry_strategy: RetryStrategyProto | None = None,
+        retry_strategy: RetryStrategyProto | None = _DEFAULT_RETRY_STRATEGY,
         max_fetch_interval: float,
         min_fetch_interval: float,
         fetch_batch_size: int,
-        overfetch_factor: float,
+        overfetch_factor: float = 1.5,
         flush_interval: float,
-        release_stuck_interval: float,
-        release_stuck_timeout: float,
+        release_stuck_interval: float = 60,
+        release_stuck_timeout: float = 60 * 10,
         max_deliveries: int | None = None,
         ack_policy: AckPolicy = AckPolicy.REJECT_ON_ERROR,
         retain_in_archive_on_ack: bool = True,
@@ -54,9 +56,8 @@ class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
         max_workers:
             Number of concurrent handler coroutines.
         retry_strategy:
-            Called to determine if and how soon a Nack'ed message is retried. If
-            None, `AckPolicy.NACK_ON_ERROR` has the same effect as
-            `AckPolicy.REJECT_ON_ERROR`.
+            Called to determine if and how soon a Nack'ed message is retried.
+            Defaults to `NoRetryStrategy()`.
         min_fetch_interval:
             Minimum interval between consecutive fetches. If the last fetch was
             full (returned as many messages as the fetch's limit), the next fetch
@@ -71,21 +72,24 @@ class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
             acquired-but-not-yet-processed messages set is smaller.
         overfetch_factor:
             Multiplier for `fetch_batch_size` to size the maximum size of the
-            set of acquired-but-not-yet-processed messages.
+            set of acquired-but-not-yet-processed messages. Defaults to `1.5`.
         flush_interval:
             Interval between flushes of processed message state to the database.
         release_stuck_interval:
-            Interval between checks for stuck `PROCESSING` messages.
+            Interval between checks for stuck `PROCESSING` messages. Defaults to
+            `60`.
         release_stuck_timeout:
             Interval since `acquired_at` after which a `PROCESSING` message is
-            considered stuck and is released back to `PENDING`.
+            considered stuck and is released back to `PENDING`. Defaults to
+            `600`.
         max_deliveries:
             Maximum number of deliveries allowed for a message. If set, messages
             that have reached this limit are Reject'ed to `FAILED` without
-            processing. Note that this might violate the at-least-once processing
-            semantics.
+            processing. Useful for poison message protection. Note that this
+            might violate the at-least-once processing semantics.
         ack_policy:
-            `AckPolicy` that controls acknowledgement behavior.
+            `AckPolicy` that controls acknowledgement behavior. Defaults to
+            `AckPolicy.REJECT_ON_ERROR`.
         """
         subscriber = create_subscriber(
             queues=queues,

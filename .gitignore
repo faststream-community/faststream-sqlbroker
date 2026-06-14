@@ -18,6 +18,7 @@ build/
 
 .local/
 *.local.*
+*.local
 
 site/
 

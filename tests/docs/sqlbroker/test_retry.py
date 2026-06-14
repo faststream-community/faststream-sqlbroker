@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from faststream_sqlbroker.sqlbroker.retry import (
+from faststream_sqlbroker import (
     ConstantRetryStrategy,
     ConstantWithJitterRetryStrategy,
     ExponentialBackoffRetryStrategy,

@@ -15,7 +15,7 @@ from faststream.middlewares import AckPolicy
 from faststream_sqlbroker.sqlbroker.broker.registrator import SqlBrokerRegistrator
 from faststream_sqlbroker.sqlbroker.configs.broker import SqlBrokerConfig
 from faststream_sqlbroker.sqlbroker.message import SqlBrokerInnerMessage
-from faststream_sqlbroker.sqlbroker.retry import RetryStrategyProto
+from faststream_sqlbroker.sqlbroker.retry import NoRetryStrategy, RetryStrategyProto
 
 if TYPE_CHECKING:
     from fast_depends.dependencies import Dependant
@@ -24,6 +24,8 @@ if TYPE_CHECKING:
         BrokerMiddleware,
         CustomCallable,
     )
+
+_DEFAULT_RETRY_STRATEGY = NoRetryStrategy()
 
 
 class SqlBrokerPublisher(ArgsContainer):
@@ -78,14 +80,14 @@ class SqlBrokerRoute(SubscriberRoute):
         *,
         publishers: Iterable[SqlBrokerPublisher] = (),
         max_workers: int = 1,
-        retry_strategy: RetryStrategyProto | None = None,
+        retry_strategy: RetryStrategyProto | None = _DEFAULT_RETRY_STRATEGY,
         max_fetch_interval: float,
         min_fetch_interval: float,
         fetch_batch_size: int,
-        overfetch_factor: float,
+        overfetch_factor: float = 1.5,
         flush_interval: float,
-        release_stuck_interval: float,
-        release_stuck_timeout: float,
+        release_stuck_interval: float = 60,
+        release_stuck_timeout: float = 60 * 10,
         max_deliveries: int | None = None,
         ack_policy: AckPolicy = AckPolicy.REJECT_ON_ERROR,
         # broker args
@@ -108,6 +110,7 @@ class SqlBrokerRoute(SubscriberRoute):
             max_workers: Number of workers to process messages concurrently.
             retry_strategy:
                 Called to determine if and when a message might be retried.
+                Defaults to `NoRetryStrategy()`.
             max_fetch_interval:
                 The maximum allowed interval between consecutive fetches.
             min_fetch_interval:
@@ -116,15 +119,20 @@ class SqlBrokerRoute(SubscriberRoute):
                 The maximum allowed number of messages to fetch in a single batch.
             overfetch_factor:
                 The factor by which the fetch_batch_size is multiplied.
+                Defaults to `1.5`.
             flush_interval:
                 The interval at which the state of messages is flushed to the database.
             release_stuck_interval:
-                The interval at which the PROCESSING-state messages are marked back as PENDING.
+                The interval at which the PROCESSING-state messages are marked
+                back as PENDING. Defaults to `60`.
             release_stuck_timeout:
-                Timeout for releasing stuck messages.
+                Timeout for releasing stuck messages. Defaults to `600`.
             max_deliveries:
-                The maximum number of deliveries allowed for a message.
-            ack_policy: Acknowledgement policy.
+                The maximum number of deliveries allowed for a message. Useful
+                for poison message protection.
+            ack_policy:
+                Acknowledgement policy. Defaults to
+                `AckPolicy.REJECT_ON_ERROR`.
             dependencies: Dependencies list to apply to the subscriber.
             parser: Parser to map original message object to FastStream one.
             decoder: Function to decode FastStream msg bytes body to python objects.

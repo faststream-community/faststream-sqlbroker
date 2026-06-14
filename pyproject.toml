@@ -10,7 +10,7 @@ authors = [
     { name = "Arseniy Popov", email = "arseniypopov@gmail.com" },
 ]
 requires-python = ">=3.10"
-version = "0.1.0a4"
+version = "0.1.0a5"
 
 dependencies = [
     "faststream>=0.7.0rc1",
@@ -34,6 +34,7 @@ test = [
     "pytest-xdist>=3.8.0",
     "pytest-timeout>=2.4.0",
     "dirty-equals==0.11",
+    "aiokafka>=0.9,<0.15",
     "asyncpg>=0.31.0",
     "asyncmy>=0.2.10",
     "aiosqlite>=0.22.1",
@@ -65,6 +66,7 @@ norecursedirs = ["tests/faststream"]
 markers = [
     "slow",
     "connected",
+    "kafka",
     "all",
 ]
 asyncio_default_fixture_loop_scope = "function"

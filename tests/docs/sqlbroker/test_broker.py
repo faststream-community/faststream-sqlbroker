@@ -1,4 +1,4 @@
-from faststream_sqlbroker.sqlbroker import SqlBroker
+from faststream_sqlbroker import SqlBroker
 
 
 def test_broker() -> None:

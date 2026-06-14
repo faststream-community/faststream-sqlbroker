@@ -7,15 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from faststream.exceptions import FeatureNotSupportedException, SetupError
 from sqlalchemy import (
-    JSON,
-    BigInteger,
-    Column,
     ColumnElement,
-    DateTime,
-    Enum,
-    LargeBinary,
-    MetaData,
-    String,
     Table,
     bindparam,
     delete,
@@ -33,79 +25,18 @@ from faststream_sqlbroker.sqlbroker.message import (
     SqlBrokerInnerMessage,
     SqlBrokerMessageState,
 )
+from faststream_sqlbroker.sqlbroker.schema import (
+    SqlBrokerSchemaConfig,
+    SqlBrokerSchemaDefinition,
+    SqlBrokerSchemaType,
+    define_sqlbroker_schema,
+)
 from faststream_sqlbroker.sqlbroker.schema_validator import SchemaValidator
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
-
-
-def _define_tables(
-    message_table_name: str,
-    message_archive_table_name: str | None,
-) -> tuple[Table, Table | None]:
-    metadata = MetaData()
-
-    message = Table(
-        message_table_name,
-        metadata,
-        Column("id", BigInteger, primary_key=True),
-        Column("queue", String(255), nullable=False, index=True),
-        Column("headers", JSON, nullable=True),
-        Column("payload", LargeBinary, nullable=False),
-        Column(
-            "state",
-            Enum(SqlBrokerMessageState),
-            nullable=False,
-            index=True,
-            server_default=SqlBrokerMessageState.PENDING.name,
-        ),
-        Column("attempts_count", BigInteger, nullable=False, default=0),
-        Column("deliveries_count", BigInteger, nullable=False, default=0),
-        Column(
-            "created_at",
-            DateTime,
-            nullable=False,
-            default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        ),
-        Column("first_attempt_at", DateTime),
-        Column(
-            "next_attempt_at",
-            DateTime,
-            nullable=False,
-            default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-            index=True,
-        ),
-        Column("last_attempt_at", DateTime),
-        Column("acquired_at", DateTime),
-    )
-
-    if message_archive_table_name is None:
-        return message, None
-
-    message_archive = Table(
-        message_archive_table_name,
-        metadata,
-        Column("id", BigInteger, primary_key=True),
-        Column("queue", String(255), nullable=False, index=True),
-        Column("headers", JSON, nullable=True),
-        Column("payload", LargeBinary, nullable=False),
-        Column("state", Enum(SqlBrokerMessageState), nullable=False, index=True),
-        Column("attempts_count", BigInteger, nullable=False),
-        Column("deliveries_count", BigInteger, nullable=False),
-        Column("created_at", DateTime, nullable=False),
-        Column("first_attempt_at", DateTime),
-        Column("last_attempt_at", DateTime),
-        Column(
-            "archived_at",
-            DateTime,
-            nullable=False,
-            default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        ),
-    )
-
-    return message, message_archive
 
 
 def _get_message_select_columns(message: Table) -> tuple[ColumnElement[Any], ...]:
@@ -130,17 +61,16 @@ class SqlBrokerBaseClient(ABC):
         self,
         engine: AsyncEngine,
         *,
-        message_table: Table,
-        message_archive_table: Table | None,
+        schema: SqlBrokerSchemaDefinition,
     ) -> None:
         self._engine = engine
-        self._message_table = message_table
-        self._message_archive_table = message_archive_table
-        self._message_select_columns = _get_message_select_columns(message_table)
-        self._schema_validator = SchemaValidator(
-            message_table=message_table,
-            message_archive_table=message_archive_table,
+        self._schema = schema
+        self._message_table = schema.tables[SqlBrokerSchemaType.MESSAGE]
+        self._message_archive_table = schema.get_table(
+            SqlBrokerSchemaType.MESSAGE_ARCHIVE
         )
+        self._message_select_columns = _get_message_select_columns(self._message_table)
+        self._schema_validator = SchemaValidator(schema=schema)
 
     async def enqueue(
         self,
@@ -503,12 +433,10 @@ class SqlBrokerSqliteClient(SqlBrokerBaseClient):
 def create_sqlbroker_client(
     engine: AsyncEngine,
     *,
-    message_table_name: str,
-    message_archive_table_name: str | None,
+    schema: SqlBrokerSchemaConfig,
 ) -> SqlBrokerBaseClient:
-    message_table, message_archive_table = _define_tables(
-        message_table_name=message_table_name,
-        message_archive_table_name=message_archive_table_name,
+    schema_definition = define_sqlbroker_schema(
+        config=schema,
     )
     client_cls: type[SqlBrokerBaseClient]
     match engine.dialect.name.lower():
@@ -522,6 +450,5 @@ def create_sqlbroker_client(
             raise FeatureNotSupportedException
     return client_cls(
         engine,
-        message_table=message_table,
-        message_archive_table=message_archive_table,
+        schema=schema_definition,
     )

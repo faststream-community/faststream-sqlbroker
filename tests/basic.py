@@ -53,11 +53,11 @@ class SqlBrokerTestcaseConfig(BaseTestcaseConfig):
         kwargs.setdefault("max_fetch_interval", 0.1)
         kwargs.setdefault("min_fetch_interval", 0.01)
         kwargs.setdefault("fetch_batch_size", 5)
-        kwargs.setdefault("overfetch_factor", 1)
+        kwargs.setdefault("overfetch_factor", 1.5)
         kwargs.setdefault("flush_interval", 0.01)
-        kwargs.setdefault("release_stuck_interval", 10)
-        kwargs.setdefault("release_stuck_timeout", 10)
-        kwargs.setdefault("max_deliveries", 20)
-        kwargs.setdefault("ack_policy", AckPolicy.NACK_ON_ERROR)
+        kwargs.setdefault("release_stuck_interval", 60)
+        kwargs.setdefault("release_stuck_timeout", 60 * 10)
+        kwargs.setdefault("max_deliveries", None)
+        kwargs.setdefault("ack_policy", AckPolicy.REJECT_ON_ERROR)
 
         return args, kwargs
