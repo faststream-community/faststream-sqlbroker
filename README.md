@@ -17,9 +17,9 @@ Publish messages transactionally with your other database operations.
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from faststream import FastStream
-from faststream.kafka import KafkaBroker
+from faststream.kafka import KafkaBroker, KafkaPublishMessage
 
-from faststream_sqlbroker import SqlBroker
+from faststream_sqlbroker import SqlBroker, SqlBrokerMessage
 
 engine = create_async_engine("postgresql+asyncpg://user:pass@localhost/mydb")
 broker_sqlbroker = SqlBroker(engine=engine)
@@ -41,15 +41,11 @@ async def publish_examples():
             },
             connection=connection,
         )
-
 ```
 
 And relay the messages from the database to another broker.
 
 ```python linenums="1"
-from faststream.kafka import KafkaPublishMessage
-from faststream_sqlbroker import SqlBrokerMessage
-
 publisher_kafka = broker_kafka.publisher("kafka_topic")
 
 
@@ -60,7 +56,6 @@ publisher_kafka = broker_kafka.publisher("kafka_topic")
     min_fetch_interval=0,
     fetch_batch_size=10,
     flush_interval=3,
-    release_stuck_interval=5,
 )
 async def handle_msg(
     msg_body: dict,
@@ -73,7 +68,6 @@ async def handle_msg(
         },
         key=msg.headers["x-kafka-key-source"].encode(),
     )
-
 ```
 
 ## Origins
