@@ -263,6 +263,67 @@ class TestConsumeAckPolicy(SqlBrokerTestcaseConfig):
         )
 
     @pytest.mark.asyncio()
+    async def test_consume_manual_overrides_policy(
+        self,
+        engine: AsyncEngine,
+        recreate_tables: None,
+        event: asyncio.Event,
+        broker: SqlBroker,
+    ) -> None:
+        """Message was manually Ack'ed."""
+
+        @broker.subscriber(
+            queues=["default1"],
+            max_workers=1,
+            retry_strategy=ConstantRetryStrategy(
+                delay_seconds=5, max_total_delay_seconds=None, max_attempts=None
+            ),
+            max_fetch_interval=10,
+            min_fetch_interval=10,
+            fetch_batch_size=5,
+            overfetch_factor=1,
+            flush_interval=0.1,
+            release_stuck_interval=10,
+            release_stuck_timeout=10,
+            max_deliveries=20,
+            ack_policy=AckPolicy.REJECT_ON_ERROR,
+        )
+        async def handler(msg: SqlBrokerMessageAnnotation) -> None:
+            await msg.ack()
+            return 1 / 0
+
+        await broker.publish({"message": "hello1"}, queue="default1")
+        await broker.start()
+
+        await asyncio.sleep(0.5)
+
+        async with engine.begin() as conn:
+            result = await conn.execute(text("SELECT * FROM message_archive;"))
+        result = result.mappings().one()
+        assert result["queue"] == "default1"
+        assert json.loads(result["payload"]) == {"message": "hello1"}
+        assert result["state"] == SqlBrokerMessageState.COMPLETED.name
+        assert result["attempts_count"] == 1
+        assert result["deliveries_count"] == 1
+        assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(result["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result["first_attempt_at"]) > as_datetime(result["created_at"])
+        assert as_datetime(result["last_attempt_at"]) == as_datetime(
+            result["first_attempt_at"]
+        )
+
+        assert as_datetime(result["archived_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(result["archived_at"]) > as_datetime(
+            result["first_attempt_at"]
+        )
+
+    @pytest.mark.asyncio()
     async def test_consume_manual_no_manual_ack(
         self, engine: AsyncEngine, recreate_tables: None, event: asyncio.Event
     ) -> None:

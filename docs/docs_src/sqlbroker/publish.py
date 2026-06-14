@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from faststream import FastStream
-from faststream_sqlbroker.sqlbroker import SqlBroker
+from faststream_sqlbroker import SqlBroker
 
 engine = create_async_engine("postgresql+asyncpg://user:pass@localhost/mydb")
 broker = SqlBroker(engine=engine)

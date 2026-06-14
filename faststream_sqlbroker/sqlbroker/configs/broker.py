@@ -9,6 +9,7 @@ from faststream_sqlbroker.sqlbroker.client import (
     SqlBrokerBaseClient,
     create_sqlbroker_client,
 )
+from faststream_sqlbroker.sqlbroker.schema import SqlBrokerSchemaConfig
 
 if TYPE_CHECKING:
     from faststream_sqlbroker.sqlbroker.publisher.producer import SqlBrokerProducer
@@ -18,10 +19,17 @@ if TYPE_CHECKING:
 class SqlBrokerConfig(BrokerConfig):
     producer: "SqlBrokerProducer" = field(default_factory=ProducerUnset)  # type: ignore[assignment]
     validate_schema_on_start: bool = True
-    message_table_name: str = "message"
-    message_archive_table_name: str | None = "message_archive"
+    schema: SqlBrokerSchemaConfig = field(default_factory=SqlBrokerSchemaConfig)
     engine: AsyncEngine | None = None
     client: SqlBrokerBaseClient | None = None
+
+    @property
+    def message_table_name(self) -> str:
+        return self.schema.message_table_name
+
+    @property
+    def message_archive_table_name(self) -> str | None:
+        return self.schema.message_archive_table_name
 
     async def connect(self, *, engine: AsyncEngine) -> None:
         self.engine = engine
@@ -31,8 +39,7 @@ class SqlBrokerConfig(BrokerConfig):
         )
         self.client = create_sqlbroker_client(
             engine,
-            message_table_name=self.message_table_name,
-            message_archive_table_name=self.message_archive_table_name,
+            schema=self.schema,
         )
         if self.validate_schema_on_start:
             await self.client.validate_schema()

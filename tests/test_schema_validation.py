@@ -21,6 +21,7 @@ from sqlalchemy.dialects import mysql, postgresql
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from faststream_sqlbroker.sqlbroker.message import SqlBrokerMessageState
+from faststream_sqlbroker.sqlbroker.schema import SqlBrokerSchemaConfig
 from tests.basic import SqlBrokerTestcaseConfig
 
 
@@ -135,8 +136,10 @@ class TestSchemaValidation(SqlBrokerTestcaseConfig):
         broker = self.get_broker(
             engine=engine,
             validate_schema_on_start=True,
-            message_table_name=custom_message_table,
-            message_archive_table_name=custom_archive_table,
+            schema=SqlBrokerSchemaConfig(
+                message_table_name=custom_message_table,
+                message_archive_table_name=custom_archive_table,
+            ),
         )
 
         try:

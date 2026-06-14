@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from sqlalchemy import Enum, Table, inspect
+from sqlalchemy import Enum, inspect
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import (
     BINARY,
@@ -23,6 +23,8 @@ from sqlalchemy.types import (
 
 if TYPE_CHECKING:
     from sqlalchemy import Connection
+
+    from faststream_sqlbroker.sqlbroker.schema import SqlBrokerSchemaDefinition
 
 
 _INTEGER_TYPES: tuple[type[Any], ...] = (BigInteger, SmallInteger, Integer)
@@ -52,12 +54,10 @@ class SchemaValidator:
     def __init__(
         self,
         *,
-        message_table: Table,
-        message_archive_table: Table | None,
+        schema: SqlBrokerSchemaDefinition,
     ) -> None:
-        self._tables = tuple(
-            table for table in (message_table, message_archive_table) if table is not None
-        )
+        self._schema = schema
+        self._tables = tuple(schema.tables.values())
 
     def __call__(self, connection: Connection) -> list[str]:
         insp = inspect(connection)

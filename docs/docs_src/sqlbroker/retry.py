@@ -1,4 +1,4 @@
-from faststream_sqlbroker.sqlbroker.retry import (
+from faststream_sqlbroker import (
     ConstantRetryStrategy,
     ConstantWithJitterRetryStrategy,
     ExponentialBackoffRetryStrategy,
@@ -22,7 +22,6 @@ linear = LinearRetryStrategy(
 
 exponential = ExponentialBackoffRetryStrategy(
     initial_delay_seconds=1,
-    multiplier=2.0,
     max_delay_seconds=60,
     max_attempts=8,
     max_total_delay_seconds=300,
@@ -30,7 +29,6 @@ exponential = ExponentialBackoffRetryStrategy(
 
 exponential_jitter = ExponentialBackoffWithJitterRetryStrategy(
     initial_delay_seconds=1,
-    multiplier=2.0,
     max_delay_seconds=60,
     jitter_factor=0.5,
     max_attempts=8,

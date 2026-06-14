@@ -1,10 +1,9 @@
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from faststream import AckPolicy, FastStream
-from faststream.kafka import KafkaBroker
+from faststream import FastStream
+from faststream.kafka import KafkaBroker, KafkaPublishMessage
 
-from faststream_sqlbroker.sqlbroker import SqlBroker
-from faststream_sqlbroker.sqlbroker.retry import ExponentialBackoffRetryStrategy
+from faststream_sqlbroker import SqlBroker, SqlBrokerMessage
 
 engine = create_async_engine("postgresql+asyncpg://user:pass@localhost/mydb")
 broker_sqlbroker = SqlBroker(engine=engine)
@@ -20,6 +19,10 @@ async def publish_examples():
         await publisher_sqlbroker.publish(
             {"message": "Hello, SqlBroker!"},
             queue="sqlbroker_queue",
+            headers={
+                "x-test-header": "outbox",
+                "x-kafka-key-source": "outbox-key",
+            },
             connection=connection,
         )
 
@@ -30,23 +33,19 @@ publisher_kafka = broker_kafka.publisher("kafka_topic")
 @publisher_kafka
 @broker_sqlbroker.subscriber(
     queues=["sqlbroker_queue"],
-    max_workers=10,
-    retry_strategy=ExponentialBackoffRetryStrategy(
-        initial_delay_seconds=1,
-        multiplier=2,
-        max_delay_seconds=60 * 5,
-        max_total_delay_seconds=60 * 60 * 6,
-        max_attempts=None,
-    ),
     max_fetch_interval=1,
     min_fetch_interval=0,
     fetch_batch_size=10,
-    overfetch_factor=1.5,
     flush_interval=3,
-    release_stuck_interval=5,
-    release_stuck_timeout=60 * 60,
-    max_deliveries=20,
-    ack_policy=AckPolicy.NACK_ON_ERROR,
 )
-async def handle_msg(msg_body: dict) -> dict:
-    return msg_body
+async def handle_msg(
+    msg_body: dict,
+    msg: SqlBrokerMessage,
+) -> KafkaPublishMessage:
+    return KafkaPublishMessage(
+        msg_body,
+        headers={
+            "x-test-header": msg.headers["x-test-header"],
+        },
+        key=msg.headers["x-kafka-key-source"].encode(),
+    )

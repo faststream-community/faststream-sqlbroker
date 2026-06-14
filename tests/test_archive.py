@@ -8,6 +8,7 @@ from faststream_sqlbroker.sqlbroker.message import (
     SqlBrokerInnerMessage,
     SqlBrokerMessageState,
 )
+from faststream_sqlbroker.sqlbroker.schema import SqlBrokerSchemaConfig
 
 
 @pytest.mark.connected()
@@ -18,8 +19,10 @@ async def test_archive_on_conflict_do_nothing(
 ) -> None:
     client = create_sqlbroker_client(
         engine,
-        message_table_name="message",
-        message_archive_table_name="message_archive",
+        schema=SqlBrokerSchemaConfig(
+            message_table_name="message",
+            message_archive_table_name="message_archive",
+        ),
     )
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     message = SqlBrokerInnerMessage(

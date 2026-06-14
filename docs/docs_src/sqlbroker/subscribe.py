@@ -1,9 +1,9 @@
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from faststream import AckPolicy, FastStream
+from faststream import FastStream
 
-from faststream_sqlbroker.sqlbroker import SqlBroker
-from faststream_sqlbroker.sqlbroker.retry import ConstantRetryStrategy
+from faststream_sqlbroker import ConstantRetryStrategy
+from faststream_sqlbroker import SqlBroker
 
 engine = create_async_engine("postgresql+asyncpg://user:pass@localhost/mydb")
 broker = SqlBroker(engine=engine)
@@ -12,7 +12,6 @@ app = FastStream(broker)
 
 @broker.subscriber(
     queues=["my_queue"],
-    max_workers=10,
     retry_strategy=ConstantRetryStrategy(
         delay_seconds=5,
         max_attempts=3,
@@ -21,14 +20,7 @@ app = FastStream(broker)
     min_fetch_interval=0.1,
     max_fetch_interval=1,
     fetch_batch_size=10,
-    overfetch_factor=2,
     flush_interval=1,
-    release_stuck_interval=60,
-    release_stuck_timeout=60*5,
-    max_deliveries=10,
-    ack_policy=AckPolicy.NACK_ON_ERROR,
-    retain_in_archive_on_ack=True,
-    retain_in_archive_on_reject=True,
 )
 async def handler(msg: str):
     print(msg)

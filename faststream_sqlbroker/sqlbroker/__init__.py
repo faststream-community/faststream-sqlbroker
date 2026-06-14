@@ -4,6 +4,12 @@ try:
     from .annotations import SqlBrokerMessage
     from .broker import SqlBroker, SqlBrokerPublisher, SqlBrokerRoute, SqlBrokerRouter
     from .response import SqlBrokerPublishCommand
+    from .schema import (
+        SqlBrokerSchemaConfig,
+        SqlBrokerSchemaType,
+        SqlBrokerSchemaVariant,
+        SqlBrokerWorkQueueSchemaVersion,
+    )
 
 except ImportError as e:
     if "'sqlalchemy'" not in e.msg:
@@ -20,5 +26,9 @@ __all__ = (
     "SqlBrokerPublisher",
     "SqlBrokerRoute",
     "SqlBrokerRouter",
+    "SqlBrokerSchemaConfig",
+    "SqlBrokerSchemaType",
+    "SqlBrokerSchemaVariant",
+    "SqlBrokerWorkQueueSchemaVersion",
     "TestApp",
 )

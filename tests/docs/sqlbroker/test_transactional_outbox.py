@@ -2,7 +2,7 @@ import pytest
 
 pytest.importorskip("aiokafka")
 
-from faststream_sqlbroker.sqlbroker import SqlBroker
+from faststream_sqlbroker import SqlBroker
 
 
 def test_transactional_outbox() -> None:
