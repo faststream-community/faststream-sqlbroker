@@ -31,7 +31,7 @@ class TestConsumeAckPolicy(SqlBrokerTestcaseConfig):
         event: asyncio.Event,
         broker: SqlBroker,
     ) -> None:
-        """Message was Nack'ed."""
+        """Message was Nacked."""
 
         @broker.subscriber(
             queues=["default1"],
@@ -89,7 +89,7 @@ class TestConsumeAckPolicy(SqlBrokerTestcaseConfig):
         event: asyncio.Event,
         broker: SqlBroker,
     ) -> None:
-        """Message was Reject'ed despite the retry strategy."""
+        """Message was Rejected despite the retry strategy."""
 
         @broker.subscriber(
             queues=["default1"],
@@ -151,7 +151,7 @@ class TestConsumeAckPolicy(SqlBrokerTestcaseConfig):
         ack_policy: AckPolicy,
         broker: SqlBroker,
     ) -> None:
-        """Message was Ack'ed despite the error."""
+        """Message was Acked despite the error."""
 
         @broker.subscriber(
             queues=["default1"],
@@ -209,7 +209,7 @@ class TestConsumeAckPolicy(SqlBrokerTestcaseConfig):
         event: asyncio.Event,
         broker: SqlBroker,
     ) -> None:
-        """Message was manually Ack'ed."""
+        """Message was manually Acked."""
 
         @broker.subscriber(
             queues=["default1"],
@@ -270,7 +270,7 @@ class TestConsumeAckPolicy(SqlBrokerTestcaseConfig):
         event: asyncio.Event,
         broker: SqlBroker,
     ) -> None:
-        """Message was manually Ack'ed."""
+        """Message was manually Acked."""
 
         @broker.subscriber(
             queues=["default1"],
@@ -328,7 +328,7 @@ class TestConsumeAckPolicy(SqlBrokerTestcaseConfig):
         self, engine: AsyncEngine, recreate_tables: None, event: asyncio.Event
     ) -> None:
         """Error was logged because the message was neither manually nor automatically acknowledged.
-        The message was Reject'ed.
+        The message was Rejected.
         """
         logger = MagicMock()
         async with self.get_broker(engine=engine, logger=logger) as broker:
@@ -367,3 +367,56 @@ class TestConsumeAckPolicy(SqlBrokerTestcaseConfig):
             assert result["queue"] == "default1"
             assert json.loads(result["payload"]) == {"message": "hello1"}
             assert result["state"] == SqlBrokerMessageState.FAILED.name
+
+    @pytest.mark.asyncio()
+    async def test_consume_manual_nack_respects_policy(
+        self,
+        engine: AsyncEngine,
+        recreate_tables: None,
+        event: asyncio.Event,
+    ) -> None:
+        async with self.get_broker(engine=engine) as broker:
+            attempted = []
+
+            @broker.subscriber(
+                queues=["default1"],
+                max_workers=1,
+                retry_strategy=ConstantRetryStrategy(
+                    delay_seconds=0, max_total_delay_seconds=None, max_attempts=3
+                ),
+                max_fetch_interval=0.01,
+                min_fetch_interval=0,
+                fetch_batch_size=5,
+                overfetch_factor=1,
+                flush_interval=0.1,
+                release_stuck_interval=10,
+                release_stuck_timeout=10,
+                max_deliveries=20,
+                ack_policy=AckPolicy.NACK_ON_ERROR,
+            )
+            async def handler(msg: Any) -> None:
+                nonlocal attempted
+                attempted.append(msg)
+                await msg.nack()
+                return 1 / 0
+
+            await broker.publish({"message": "hello1"}, queue="default1")
+            await broker.start()
+
+            await asyncio.sleep(0.5)
+
+            assert len(attempted) == 3
+
+            async with engine.begin() as conn:
+                result = await conn.execute(text("SELECT * FROM message_archive;"))
+
+            result = result.mappings().one()
+            assert result["queue"] == "default1"
+            assert json.loads(result["payload"]) == {"message": "hello1"}
+            assert result["state"] == SqlBrokerMessageState.FAILED.name
+            assert result["attempts_count"] == 3
+            assert result["deliveries_count"] == 3
+
+            async with engine.begin() as conn:
+                result = await conn.execute(text("SELECT * FROM message;"))
+            assert len(result.all()) == 0
