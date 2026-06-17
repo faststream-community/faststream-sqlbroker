@@ -1,4 +1,4 @@
 [submodule "faststream"]
 	path = tests/faststream
-	url = https://github.com/Arseniy-Popov/faststream.git
-	branch = feat/sqla-broker
+	url = https://github.com/ag2ai/faststream.git
+	branch = main
