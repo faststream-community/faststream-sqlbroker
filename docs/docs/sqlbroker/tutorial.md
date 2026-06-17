@@ -29,7 +29,7 @@ pip install "faststream-sqlbroker"
 
 ## Database Tables
 
-Currently the only supported DB schema variant is `WORK_QUEUE`, at version `1`, which uses up to two tables — `message` (active messages) and `message_archive` (completed/failed messages). These settings are grouped under the broker's `schema` parameter via `SqlBrokerSchemaConfig`. Set `message_archive_table_name=None` there to omit using archiving on success and [DLQ](../sqlbroker/design.md#dead-letter-queue){.internal-link}. You can customize the tables to your liking (partition them, add indices, specify more specific data types like `JSONB`, etc.) as long as they generally conform to the selected schema definition. Schema check is done on startup if the brokers's `validate_schema_on_start` is `True`.
+Currently the only supported DB schema variant is `WORK_QUEUE`, at version `1`, which uses up to two tables — `message` (active messages) and `message_archive` (completed/failed messages). These settings are grouped under the broker's `schema` parameter via `SqlBrokerSchemaConfig`. Set `message_archive_table_name=None` there to omit using archiving on success and [DLQ](../sqlbroker/design.md#dead-letter-queue){.internal-link}. You can customize the tables to your liking (partition them, add indices, specify more specific data types like `JSONB`, etc.) as long as they generally conform to the selected schema definition. Schema check is done on startup if the broker's `validate_schema_on_start` is `True`.
 
 ```python linenums="1"
 {!> docs_src/sqlbroker/tables.py !}
@@ -96,26 +96,28 @@ When `connection` is provided, the message insert participates in the same datab
 - **`min_fetch_interval`** — Minimum interval between consecutive fetches. If the last fetch was full (returned as many messages as the fetch's limit), the next fetch happens after both (i) minimum fetch interval has passed, and (ii) capacity equal to the fetch batch size has freed up in the set of acquired-but-not-yet-processed messages.
 - **`max_fetch_interval`** — Maximum interval between consecutive fetches.
 - **`flush_interval`** — Interval between flushes of processed message state to the database.
-- **`release_stuck_interval`** (default: `60`) — Interval between checks for stuck [`PROCESSING`](../sqlbroker/design.md#message-lifecycle){.internal-link} messages.
-- **`release_stuck_timeout`** (default: `60 * 10`) — Interval since `acquired_at` after which a [`PROCESSING`](../sqlbroker/design.md#message-lifecycle){.internal-link} message is considered stuck and is released back to [`PENDING`](../sqlbroker/design.md#message-lifecycle){.internal-link}.
-- **`max_deliveries`** (default: `None`) — Maximum number of deliveries allowed for a message for [poison message protection](../sqlbroker/design.md#poison-message-protection){.internal-link}. If set, messages that have reached this limit are [Rejected](#reject){.internal-link} to [`FAILED`](../sqlbroker/design.md#message-lifecycle){.internal-link} without processing. Note that this might violate the at-least-once processing semantics.
-- **`ack_policy`** (default: `REJECT_ON_ERROR`) — [`AckPolicy`](../getting-started/acknowledgement.md){.internal-link} that controls acknowledgement behavior.
-- **`retain_in_archive_on_ack`** (default: `True`) — [`COMPLETED`](../sqlbroker/design.md#message-lifecycle){.internal-link} ([Acked](#ack){.internal-link}) messages, in addition to being removed from the primary table, are also persisted in the archive table. Requires the broker to define an archive table (`message_archive_table_name`).
-- **`retain_in_archive_on_reject`** (default: `True`) — [`FAILED`](../sqlbroker/design.md#message-lifecycle){.internal-link} ([Rejected](#reject){.internal-link}) messages, in addition to being removed from the primary table, are also persisted in the archive table, where they serve as a [dead-letter queue](../sqlbroker/design.md#dead-letter-queue){.internal-link}. Requires the broker to define an archive table (`message_archive_table_name`).
+- **`release_stuck_interval`** (default: `60`) — Interval between checks for stuck [`PROCESSING`](#message-lifecycle){.internal-link} messages.
+- **`release_stuck_timeout`** (default: `60 * 10`) — Interval since `acquired_at` after which a [`PROCESSING`](#message-lifecycle){.internal-link} message is considered stuck and is released back to [`PENDING`](#message-lifecycle){.internal-link}.
+- **`max_deliveries`** (default: `None`) — Maximum number of deliveries allowed for a message for [poison message protection](../sqlbroker/design.md#poison-message-protection){.internal-link}. If set, messages that have reached this limit are [Rejected](#reject){.internal-link} without processing. Note that this might violate the at-least-once processing semantics.
+- **`ack_policy`** (default: `REJECT_ON_ERROR`) — [`AckPolicy`](#automatic-via-ackpolicy){.internal-link} that controls acknowledgement behavior.
+- **`retain_in_archive_on_ack`** (default: `True`) — [Acked](#ack){.internal-link} messages, in addition to being removed from the primary table, are also persisted in the archive table. Requires the broker to define an archive table (`message_archive_table_name`).
+- **`retain_in_archive_on_reject`** (default: `True`) — [Rejected](#reject){.internal-link} messages, in addition to being removed from the primary table, are also persisted in the archive table, where they serve as a [dead-letter queue](../sqlbroker/design.md#dead-letter-queue){.internal-link}. Requires the broker to define an archive table (`message_archive_table_name`).
 
 
 ### Message Lifecycle
 
-A published message starts out in the `message` table with a [`PENDING`](../sqlbroker/design.md#message-lifecycle){.internal-link} status. Once a subscriber acquires it, the row is marked as [`PROCESSING`](../sqlbroker/design.md#message-lifecycle){.internal-link} and the message is processed.
+A published message starts out in the `message` table with a `PENDING` status. Once a subscriber acquires it, the row is marked as `PROCESSING` and the message is processed.
 
-From there, the following acknowledgment actions are possible:
+From there, the following acknowledgement actions are possible:
 
 #### **Ack**
-The message is marked as [`COMPLETED`](../sqlbroker/design.md#message-lifecycle){.internal-link} and is moved from the `message` table to the `message_archive` table.
+The message is marked as `COMPLETED` and is moved from the `message` table to the `message_archive` table.
 #### **Nack**
-The `retry_policy` is called to determine if the message is allowed to be retried and when it will be retried. If allowed to be retried, the message is marked as [`RETRYABLE`](../sqlbroker/design.md#message-lifecycle){.internal-link} in the `message` table. If not, the message is [Rejected](#reject){.internal-link}.
+The `retry_strategy` is called to determine if the message is allowed to be retried and when it will be retried. If allowed to be retried, the message is marked as `RETRYABLE` in the `message` table. If not, the message is [Rejected](#reject){.internal-link}.
 #### **Reject**
-The message is marked as [`FAILED`](../sqlbroker/design.md#message-lifecycle){.internal-link} and is moved from the `message` table to the `message_archive` table.
+The message is marked as `FAILED` and is moved from the `message` table to the `message_archive` table.
+
+These actions are performed by [Acknowledgements](#acknowledgements){.internal-link} after a processing attempt. Also, if `max_deliveries` was set on a subscriber and exceeded, the message is [Rejected](#reject){.internal-link} prior to a processing attempt.
 
 ### Acknowledgements
 
@@ -145,11 +147,16 @@ Use `AckPolicy.MANUAL` when the handler should decide the outcome explicitly wit
 {!> docs_src/sqlbroker/acknowledgements.py [ln:29-39]!}
 ```
 
-Manual acknowledgement can also be used with any other `ack_policy`, not just `AckPolicy.MANUAL`. The override the `ack_policy` driven action.
+Manual acknowledgements can also be used with any other `ack_policy`, not just `AckPolicy.MANUAL`. They override the `ack_policy` driven action.
 
 ### Retry strategies
 
-When a message is [Nacked](#nack){.internal-link} (either manually or by `AckPolicy.NACK_ON_ERROR`), the `retry_strategy` determines if and when the message should be retried. By default, `NoRetryStrategy()` disables retries. All strategies accept `max_attempts` and `max_total_delay_seconds` as common parameters — if either limit is reached, the message is marked as [`FAILED`](../sqlbroker/design.md#message-lifecycle){.internal-link} instead of [`RETRYABLE`](../sqlbroker/design.md#message-lifecycle){.internal-link}. Otherwise, the strategy schedules the message for a retry determined by the returned `next_attempt_at`.
+When a message is [Nacked](#nack){.internal-link} (either manually with `msg.nack()` or by `AckPolicy.NACK_ON_ERROR`), the `retry_strategy` determines if and when the message should be retried. By default, `NoRetryStrategy()` disables retries. All strategies accept common parameters:
+
+- `max_attempts` - Maximum number of processing attempts.
+- `max_total_delay_seconds` - Maximum delay between the first and last attempt.
+
+If either limit is reached, the message is marked as [Rejected](#reject){.internal-link}. Otherwise, `next_attempt_at` is set on the message to signify a scheduled retry.
 
 #### `ConstantRetryStrategy`
 
@@ -180,7 +187,7 @@ Delay starts at `initial_delay_seconds` and is multiplied by `multiplier` on eac
 Same as exponential backoff, but adds random jitter (up to `delay * jitter_factor`) to spread out retries and avoid thundering herds.
 
 ```python linenums="1"
-{!> docs_src/sqlbroker/retry.py [ln:30-36]!}
+{!> docs_src/sqlbroker/retry.py [ln:31-38]!}
 ```
 
 #### `ConstantWithJitterRetryStrategy`
@@ -188,15 +195,15 @@ Same as exponential backoff, but adds random jitter (up to `delay * jitter_facto
 Retries after `base_delay_seconds` plus random jitter in the range `[-jitter_seconds, +jitter_seconds]`.
 
 ```python linenums="1"
-{!> docs_src/sqlbroker/retry.py [ln:38-43]!}
+{!> docs_src/sqlbroker/retry.py [ln:40-45]!}
 ```
 
 #### `NoRetryStrategy`
 
-No retries — the message is marked as [`FAILED`](../sqlbroker/design.md#message-lifecycle){.internal-link} on the first [Nack](#nack){.internal-link}.
+No retries — the message is marked as [Rejected](#reject){.internal-link} on the first [Nack](#nack){.internal-link}.
 
 ```python linenums="1"
-{!> docs_src/sqlbroker/retry.py [ln:45]!}
+{!> docs_src/sqlbroker/retry.py [ln:47-49]!}
 ```
 
 ## Transactional outbox
