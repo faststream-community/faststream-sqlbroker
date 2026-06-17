@@ -398,7 +398,6 @@ class TestConsumeAckPolicy(SqlBrokerTestcaseConfig):
                 nonlocal attempted
                 attempted.append(msg)
                 await msg.nack()
-                return 1 / 0
 
             await broker.publish({"message": "hello1"}, queue="default1")
             await broker.start()
