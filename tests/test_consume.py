@@ -706,7 +706,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             queues=["default1"],
             max_workers=2,
             retry_strategy=ConstantRetryStrategy(
-                delay_seconds=0, max_total_delay_seconds=None, max_attempts=3
+                delay_seconds=10, max_total_delay_seconds=None, max_attempts=3
             ),
             max_fetch_interval=10,
             min_fetch_interval=10,
@@ -716,7 +716,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             release_stuck_interval=10,
             release_stuck_timeout=10,
             max_deliveries=20,
-            ack_policy=AckPolicy.NACK_ON_ERROR,
+            ack_policy=AckPolicy.ACK,
         )
         async def handler(msg: SqlBrokerMessageAnnotation, msg_body: dict) -> None:
             await msg.nack()
@@ -733,6 +733,32 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         assert len(result) == 2
         assert result[0]["state"] == SqlBrokerMessageState.RETRYABLE.name
         assert result[1]["state"] == SqlBrokerMessageState.RETRYABLE.name
+
+        result = result[0]
+        assert result["queue"] == "default1"
+        assert json.loads(result["payload"]) == {"message": "hello1"}
+        assert result["state"] == SqlBrokerMessageState.RETRYABLE.name
+        assert result["attempts_count"] == 1
+        assert result["deliveries_count"] == 1
+        assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        ).replace(tzinfo=None)
+        assert as_datetime(result["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None).replace(tzinfo=None)
+        assert as_datetime(result["first_attempt_at"]) > as_datetime(result["created_at"])
+        assert as_datetime(result["last_attempt_at"]) == as_datetime(
+            result["first_attempt_at"]
+        )
+
+        assert as_datetime(result["next_attempt_at"]) >= as_datetime(
+            result["first_attempt_at"]
+        ) + timedelta(seconds=10)
+        assert result["acquired_at"] is None
+
+        async with engine.begin() as conn:
+            result = await conn.execute(text("SELECT * FROM message_archive;"))
+        assert len(result.all()) == 0
 
     @pytest.mark.asyncio()
     async def test_consume_manual_reject_takes_precedence(
