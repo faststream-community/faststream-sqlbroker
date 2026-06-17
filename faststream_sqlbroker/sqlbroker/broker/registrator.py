@@ -56,7 +56,7 @@ class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
         max_workers:
             Number of concurrent handler coroutines.
         retry_strategy:
-            Called to determine if and how soon a Nack'ed message is retried.
+            Called to determine if and how soon a Nacked message is retried.
             Defaults to `NoRetryStrategy()`.
         min_fetch_interval:
             Minimum interval between consecutive fetches. If the last fetch was
@@ -84,7 +84,7 @@ class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
             `600`.
         max_deliveries:
             Maximum number of deliveries allowed for a message. If set, messages
-            that have reached this limit are Reject'ed to `FAILED` without
+            that have reached this limit are Rejected to `FAILED` without
             processing. Useful for poison message protection. Note that this
             might violate the at-least-once processing semantics.
         ack_policy:

@@ -146,7 +146,7 @@ class SqlBrokerInnerMessage:
                     f"State of message {self} was not updated after processing, "
                     f"perhaps due to the AckPolicy.MANUAL policy and lack of manual "
                     f"acknowledgement in the handler. As a precaution, the message "
-                    f"was Reject'ed.",
+                    f"was Rejected.",
                 )
             await self.reject()
 
