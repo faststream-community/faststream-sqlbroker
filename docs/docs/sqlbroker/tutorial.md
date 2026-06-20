@@ -27,9 +27,17 @@ PostgreSQL, MySQL, and SQLite are currently supported.
 pip install "faststream-sqlbroker"
 ```
 
+## Schema Variants
+
+A schema variant defines how messages are laid out in the database and how subscribers compete for work. You select it with `schema.variant` on `SqlBrokerSchemaConfig` (see [Broker](#broker){.internal-link}).
+
+### `COMPETING_CONSUMERS` (default)
+
+The [competing consumers](https://www.enterpriseintegrationpatterns.com/patterns/messaging/CompetingConsumers.html){.external-link target="_blank"} pattern: multiple processes share one queue, each message is handled by one concurrent worker, and processing order is not guaranteed.
+
 ## Database Tables
 
-Currently the only supported DB schema variant is `WORK_QUEUE`, at version `1`, which uses up to two tables — `message` (active messages) and `message_archive` (completed/failed messages). These settings are grouped under the broker's `schema` parameter via `SqlBrokerSchemaConfig`. Set `message_archive_table_name=None` there to omit using archiving on success and [DLQ](../sqlbroker/design.md#dead-letter-queue){.internal-link}. You can customize the tables to your liking (partition them, add indices, specify more specific data types like `JSONB`, etc.) as long as they generally conform to the selected schema definition. Schema check is done on startup if the broker's `validate_schema_on_start` is `True`.
+The `COMPETING_CONSUMERS` variant (version `1`) uses up to two tables — `message` (active messages) and `message_archive` (completed/failed messages). These settings are grouped under the broker's `schema` parameter via `SqlBrokerSchemaConfig`. Set `message_archive_table_name=None` there to omit using archiving on success and [DLQ](../sqlbroker/design.md#dead-letter-queue){.internal-link}. You can customize the tables to your liking (partition them, add indices, specify more specific data types like `JSONB`, etc.) as long as they generally conform to the selected schema definition. Schema check is done on startup if the broker's `validate_schema_on_start` is `True`.
 
 ```python linenums="1"
 {!> docs_src/sqlbroker/tables.py !}
@@ -47,8 +55,8 @@ Currently the only supported DB schema variant is `WORK_QUEUE`, at version `1`, 
 - **`schema`** (default: `SqlBrokerSchemaConfig()`) — `SqlBrokerSchemaConfig` describing the broker tables and schema selection.
 - **`schema.message_table_name`** (default: `message`) — Name of the table containing active messages.
 - **`schema.message_archive_table_name`** (default: `message_archive`) — Name of the table containing completed/failed messages. Set to `None` to run without an archive table, in which case subscribers must set both `retain_in_archive_on_ack` and `retain_in_archive_on_reject` to `False`.
-- **`schema.variant`** (default: `WORK_QUEUE`) — Schema variant to use.
-- **`schema.version`** (default: `V1`) — Variant-specific schema version enum. For `WORK_QUEUE`, use `SqlBrokerWorkQueueSchemaVersion`.
+- **`schema.variant`** (default: `COMPETING_CONSUMERS`) — Schema variant to use.
+- **`schema.version`** (default: `V1`) — Variant-specific schema version enum. For `COMPETING_CONSUMERS`, use `SqlBrokerCompetingConsumersSchemaVersion`.
 - **`validate_schema_on_start`** (default: `True`) — Validates that the configured tables exist and conform to the expected schema.
 - **`graceful_timeout`** (default: `15.0`) — Seconds to wait for in-flight messages to finish processing during shutdown.
 

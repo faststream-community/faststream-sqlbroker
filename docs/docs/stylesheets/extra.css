@@ -17,3 +17,11 @@ a.external-link::after {
        to keep the mark on the same line as the link */
     content: "\00A0[↪]";
 }
+
+article.md-content__inner.md-typeset > h2 {
+    background: var(--md-accent-fg-color--transparent);
+    border-left: 4px solid var(--md-accent-fg-color);
+    border-radius: 0 4px 4px 0;
+    margin-top: 2em;
+    padding: 0.35rem 0.75rem;
+}
