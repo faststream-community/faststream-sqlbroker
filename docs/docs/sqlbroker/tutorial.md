@@ -29,9 +29,9 @@ pip install "faststream-sqlbroker"
 
 ## Schema Variants
 
-A schema variant defines how messages are laid out in the database and how subscribers compete for work. You select it with `schema.variant` on `SqlBrokerSchemaConfig` (see [Broker](#broker){.internal-link}).
+A schema variant selects the messaging topology the broker implements.
 
-### `COMPETING_CONSUMERS` (default)
+### `COMPETING_CONSUMERS`
 
 The [competing consumers](https://www.enterpriseintegrationpatterns.com/patterns/messaging/CompetingConsumers.html){.external-link target="_blank"} pattern: multiple processes share one queue, each message is handled by one concurrent worker, and processing order is not guaranteed.
 
