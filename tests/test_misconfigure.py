@@ -189,7 +189,7 @@ async def test_fail_on_unsupported_schema_version() -> None:
     broker = SqlBroker(
         engine=create_async_engine("sqlite+aiosqlite:///:memory:"),
         schema=SqlBrokerSchemaConfig(
-            variant=SqlBrokerSchemaVariant.WORK_QUEUE,
+            variant=SqlBrokerSchemaVariant.COMPETING_CONSUMERS,
             version=cast("Any", 2),
         ),
     )

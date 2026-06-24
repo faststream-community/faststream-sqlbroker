@@ -1,5 +1,6 @@
 from .sqlbroker import (
     SqlBroker,
+    SqlBrokerCompetingConsumersSchemaVersion,
     SqlBrokerMessage,
     SqlBrokerPublishCommand,
     SqlBrokerPublisher,
@@ -8,7 +9,6 @@ from .sqlbroker import (
     SqlBrokerSchemaConfig,
     SqlBrokerSchemaType,
     SqlBrokerSchemaVariant,
-    SqlBrokerWorkQueueSchemaVersion,
     TestApp,
 )
 from .sqlbroker.retry import (
@@ -32,6 +32,7 @@ __all__ = (
     "RetryStrategyProto",
     "RetryStrategyTemplate",
     "SqlBroker",
+    "SqlBrokerCompetingConsumersSchemaVersion",
     "SqlBrokerMessage",
     "SqlBrokerPublishCommand",
     "SqlBrokerPublisher",
@@ -40,6 +41,5 @@ __all__ = (
     "SqlBrokerSchemaConfig",
     "SqlBrokerSchemaType",
     "SqlBrokerSchemaVariant",
-    "SqlBrokerWorkQueueSchemaVersion",
     "TestApp",
 )

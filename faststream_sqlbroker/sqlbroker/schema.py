@@ -21,10 +21,10 @@ from faststream_sqlbroker.sqlbroker.message import SqlBrokerMessageState
 
 
 class SqlBrokerSchemaVariant(str, Enum):
-    WORK_QUEUE = "work_queue"
+    COMPETING_CONSUMERS = "competing_consumers"
 
 
-class SqlBrokerWorkQueueSchemaVersion(IntEnum):
+class SqlBrokerCompetingConsumersSchemaVersion(IntEnum):
     V1 = 1
 
 
@@ -37,8 +37,10 @@ class SqlBrokerSchemaType(str, Enum):
 class SqlBrokerSchemaConfig:
     message_table_name: str = "message"
     message_archive_table_name: str | None = "message_archive"
-    variant: SqlBrokerSchemaVariant = SqlBrokerSchemaVariant.WORK_QUEUE
-    version: SqlBrokerWorkQueueSchemaVersion = SqlBrokerWorkQueueSchemaVersion.V1
+    variant: SqlBrokerSchemaVariant = SqlBrokerSchemaVariant.COMPETING_CONSUMERS
+    version: SqlBrokerCompetingConsumersSchemaVersion = (
+        SqlBrokerCompetingConsumersSchemaVersion.V1
+    )
 
 
 def _unsupported_schema_variant_error(
@@ -55,14 +57,14 @@ def _unsupported_schema_version_error(
     return SetupError(
         "Unsupported SqlBroker schema version for "
         f"{variant.value}: {version}. Supported versions: "
-        f"{SqlBrokerWorkQueueSchemaVersion.V1.value}"
+        f"{SqlBrokerCompetingConsumersSchemaVersion.V1.value}"
     )
 
 
 @dataclass(frozen=True)
 class SqlBrokerSchemaDefinition:
     variant: SqlBrokerSchemaVariant
-    version: SqlBrokerWorkQueueSchemaVersion
+    version: SqlBrokerCompetingConsumersSchemaVersion
     tables: dict[SqlBrokerSchemaType, Table]
 
     def get_table(self, schema_type: SqlBrokerSchemaType) -> Table | None:
@@ -75,11 +77,11 @@ def define_sqlbroker_schema(
 ) -> SqlBrokerSchemaDefinition:
     variant = config.variant
 
-    if variant is not SqlBrokerSchemaVariant.WORK_QUEUE:
+    if variant is not SqlBrokerSchemaVariant.COMPETING_CONSUMERS:
         raise _unsupported_schema_variant_error(variant)
 
     version = config.version
-    if not isinstance(version, SqlBrokerWorkQueueSchemaVersion):
+    if not isinstance(version, SqlBrokerCompetingConsumersSchemaVersion):
         raise _unsupported_schema_version_error(
             variant=variant,
             version=version,

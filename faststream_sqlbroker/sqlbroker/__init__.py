@@ -5,10 +5,10 @@ try:
     from .broker import SqlBroker, SqlBrokerPublisher, SqlBrokerRoute, SqlBrokerRouter
     from .response import SqlBrokerPublishCommand
     from .schema import (
+        SqlBrokerCompetingConsumersSchemaVersion,
         SqlBrokerSchemaConfig,
         SqlBrokerSchemaType,
         SqlBrokerSchemaVariant,
-        SqlBrokerWorkQueueSchemaVersion,
     )
 
 except ImportError as e:
@@ -21,6 +21,7 @@ except ImportError as e:
 
 __all__ = (
     "SqlBroker",
+    "SqlBrokerCompetingConsumersSchemaVersion",
     "SqlBrokerMessage",
     "SqlBrokerPublishCommand",
     "SqlBrokerPublisher",
@@ -29,6 +30,5 @@ __all__ = (
     "SqlBrokerSchemaConfig",
     "SqlBrokerSchemaType",
     "SqlBrokerSchemaVariant",
-    "SqlBrokerWorkQueueSchemaVersion",
     "TestApp",
 )
