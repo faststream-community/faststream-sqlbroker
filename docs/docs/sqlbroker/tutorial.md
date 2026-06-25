@@ -29,7 +29,7 @@ pip install "faststream-sqlbroker"
 
 ## Schema Variants
 
-A schema variant selects the messaging topology the broker implements.
+A schema variant selects the consumption semantics the broker implements.
 
 ### `COMPETING_CONSUMERS`
 
@@ -121,11 +121,11 @@ From there, the following acknowledgement outcomes are possible:
 #### **Ack**
 The message is marked as `COMPLETED` and is moved from the `message` table to the `message_archive` table.
 #### **Nack**
-The `retry_strategy` is called to determine if the message is allowed to be retried and when it will be retried. If allowed to be retried, the message is marked as `RETRYABLE` in the `message` table. If not, the message is [Rejected](#reject){.internal-link}.
+The [`retry_strategy`](#retry-strategies){.internal-link} is called to determine if the message is allowed to be retried and when it will be retried. If allowed to be retried, the message is marked as `RETRYABLE` in the `message` table. If not, the message is [Rejected](#reject){.internal-link}.
 #### **Reject**
 The message is marked as `FAILED` and is moved from the `message` table to the `message_archive` table.
 
-These [outcomes](#message-lifecycle){.internal-link} are applied through [acknowledgement](#acknowledgements){.internal-link} after a processing attempt. The exception is `max_deliveries`: if a subscriber sets it
+These outcomes are applied through [acknowledgement](#acknowledgements){.internal-link} after a processing attempt. The exception is `max_deliveries`: if a subscriber sets it
 and a message exceeds the limit, the message is [Rejected](#reject){.internal-link} *before* any processing attempt.
 
 ### Acknowledgements
