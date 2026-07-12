@@ -261,12 +261,12 @@ If the sampler runs in every broker node, each node queries the shared database 
 ```console
 pip install "faststream-sqlbroker[cli]"
 sqlbroker-state-metrics \
-    --database-url postgresql+asyncpg://user:pass@localhost/mydb \ # pragma: allowlist secret`
     --host 0.0.0.0 \
     --port 8000 \
     --message-table message \
     --archive-table message_archive \
-    --interval 30
+    --interval 30 \
+    --database-url postgresql+asyncpg://user:pass@localhost/mydb # pragma: allowlist secret
 ```
 
 ### In-broker sampler
