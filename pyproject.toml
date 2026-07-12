@@ -10,12 +10,22 @@ authors = [
     { name = "Arseniy Popov", email = "arseniypopov@gmail.com" },
 ]
 requires-python = ">=3.10"
-version = "0.1.0a6"
+version = "0.1.0a7"
 
 dependencies = [
     "faststream>=0.7.0rc1",
     "sqlalchemy>=2.0.44",
 ]
+
+[project.optional-dependencies]
+prometheus = ["prometheus-client>=0.20"]
+cli = [
+    "prometheus-client>=0.20",
+    "typer>=0.12.1",
+]
+
+[project.scripts]
+sqlbroker-state-metrics = "faststream_sqlbroker.sqlbroker.observability.cli:main"
 
 [tool.uv.build-backend]
 module-root = "."
@@ -39,6 +49,8 @@ test = [
     "asyncmy>=0.2.10",
     "aiosqlite>=0.22.1",
     "cryptography>=43.0.0",
+    "prometheus-client>=0.20",
+    "typer>=0.12.1",
 ]
 
 docs = [
