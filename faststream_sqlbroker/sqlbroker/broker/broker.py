@@ -17,9 +17,6 @@ from faststream_sqlbroker.sqlbroker.broker.logging import make_sqlbroker_logger_
 from faststream_sqlbroker.sqlbroker.broker.registrator import SqlBrokerRegistrator
 from faststream_sqlbroker.sqlbroker.configs.broker import SqlBrokerConfig
 from faststream_sqlbroker.sqlbroker.message import SqlBrokerInnerMessage
-from faststream_sqlbroker.sqlbroker.observability import (
-    SqlBrokerStateSampler,
-)
 from faststream_sqlbroker.sqlbroker.publisher.producer import SqlBrokerProducer
 from faststream_sqlbroker.sqlbroker.response import SqlBrokerPublishCommand
 from faststream_sqlbroker.sqlbroker.schema import SqlBrokerSchemaConfig
@@ -37,6 +34,7 @@ if TYPE_CHECKING:
     from faststream_sqlbroker.sqlbroker.client import SqlBrokerBaseClient
     from faststream_sqlbroker.sqlbroker.observability import (
         SqlBrokerStateMetricsConfig,
+        SqlBrokerStateSampler as SqlBrokerStateSamplerType,
     )
 
 
@@ -130,14 +128,19 @@ class SqlBroker(
             ),
         )
 
+        self._state_metrics_sampler: SqlBrokerStateSamplerType | None
         if state_metrics_config is not None:
+            from faststream_sqlbroker.sqlbroker.observability.sampler import (
+                SqlBrokerStateSampler,
+            )
+
             self._state_metrics_sampler = SqlBrokerStateSampler(
                 engine=engine,
                 schema=config.schema,
                 config=state_metrics_config,
             )
         else:
-            self._state_metrics_sampler = None  # type: ignore[assignment]
+            self._state_metrics_sampler = None
 
     async def start(self) -> None:
         await self.connect()
