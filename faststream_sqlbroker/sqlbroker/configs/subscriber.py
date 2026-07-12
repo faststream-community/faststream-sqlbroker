@@ -18,7 +18,8 @@ class SqlBrokerSubscriberConfig(SubscriberUsecaseConfig):
     max_fetch_interval: float
     min_fetch_interval: float
     fetch_batch_size: int
-    overfetch_factor: float
+    max_not_processed_factor: float
+    max_not_persisted_factor: float
     flush_interval: float
     release_stuck_interval: float
     release_stuck_timeout: float

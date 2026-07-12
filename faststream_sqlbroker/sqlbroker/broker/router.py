@@ -84,7 +84,8 @@ class SqlBrokerRoute(SubscriberRoute):
         max_fetch_interval: float,
         min_fetch_interval: float,
         fetch_batch_size: int,
-        overfetch_factor: float = 1.5,
+        max_not_processed_factor: float = 1.5,
+        max_not_persisted_factor: float = 1.5,
         flush_interval: float,
         release_stuck_interval: float = 60,
         release_stuck_timeout: float = 60 * 10,
@@ -117,9 +118,13 @@ class SqlBrokerRoute(SubscriberRoute):
                 The minimum allowed interval between consecutive fetches.
             fetch_batch_size:
                 The maximum allowed number of messages to fetch in a single batch.
-            overfetch_factor:
+            max_not_processed_factor:
                 The factor by which the fetch_batch_size is multiplied.
                 Defaults to `1.5`.
+            max_not_persisted_factor:
+                The factor by which the fetch_batch_size is multiplied to cap
+                acquired messages whose state has not yet been persisted.
+                Defaults to `2.0`.
             flush_interval:
                 The interval at which the state of messages is flushed to the database.
             release_stuck_interval:
@@ -149,7 +154,8 @@ class SqlBrokerRoute(SubscriberRoute):
             max_fetch_interval=max_fetch_interval,
             min_fetch_interval=min_fetch_interval,
             fetch_batch_size=fetch_batch_size,
-            overfetch_factor=overfetch_factor,
+            max_not_processed_factor=max_not_processed_factor,
+            max_not_persisted_factor=max_not_persisted_factor,
             flush_interval=flush_interval,
             release_stuck_interval=release_stuck_interval,
             release_stuck_timeout=release_stuck_timeout,

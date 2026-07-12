@@ -66,8 +66,14 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         self._flush_interval = config.flush_interval
 
         self._fetch_batch_size = config.fetch_batch_size
-        self._max_not_processed = int(config.fetch_batch_size * config.overfetch_factor)
+        self._max_not_processed = int(
+            config.fetch_batch_size * config.max_not_processed_factor
+        )
+        self._max_not_persisted = int(
+            config.fetch_batch_size * config.max_not_persisted_factor
+        )
         self._not_processed_count = 0
+        self._not_persisted_count = 0
         self.graceful_timeout = self._outer_config.graceful_timeout
         self._release_stuck_timeout = config.release_stuck_timeout
         self._max_deliveries = config.max_deliveries
@@ -157,8 +163,15 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         task_flush = self.add_task(self._flush_results)
         await task_flush
 
-    def _check_if_may_fetch(self) -> None:
-        if self._max_not_processed - self._not_processed_count >= self._fetch_batch_size:
+    @property
+    def _free_slots(self) -> int:
+        return min(
+            self._max_not_processed - self._not_processed_count,
+            self._max_not_persisted - self._not_persisted_count,
+        )
+
+    def _check_if_may_fetch_eagerly(self) -> None:
+        if self._free_slots >= self._fetch_batch_size:
             self._may_fetch_event.set()
 
     async def _fetch_loop(self) -> None:
@@ -167,9 +180,8 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                 break
             self._may_fetch_event.clear()
 
-            free_slots = self._max_not_processed - self._not_processed_count
-            if free_slots > 0:
-                limit = min(self._fetch_batch_size, free_slots)
+            if self._free_slots > 0:
+                limit = min(self._fetch_batch_size, self._free_slots)
 
                 try:
                     batch = await self._client.fetch(self._queues, limit=limit)
@@ -180,14 +192,14 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
 
                 for msg in batch:
                     self._not_processed_count += 1
+                    self._not_persisted_count += 1
                     await self._pending_consume_queue.put(msg)
-
-                self._check_if_may_fetch()
-
                 self._last_fetch_was_full = len(batch) == limit
                 if not self._last_fetch_was_full:
                     await self._sleep_until_stop_event(self._max_fetch_interval)
                     continue
+
+                self._check_if_may_fetch_eagerly()
 
             async with self._task_context(
                 asyncio.sleep, func_args=(self._min_fetch_interval,)
@@ -224,7 +236,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                 )
 
             self._not_processed_count -= 1
-            self._check_if_may_fetch()
+            self._check_if_may_fetch_eagerly()
 
             self._buffer_results(message)
             self._pending_consume_queue.task_done()
@@ -298,12 +310,16 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
 
         try:
             await self._client.retry(to_update_in_primary)
+            self._not_persisted_count -= len(to_update_in_primary)
+            self._check_if_may_fetch_eagerly()
         except Exception:
             self._buffer_results(messages)
             raise
 
         try:
             await self._client.archive(to_persist_in_archive, to_delete_from_primary)
+            self._not_persisted_count -= len(to_delete_from_primary)
+            self._check_if_may_fetch_eagerly()
         except Exception:
             self._buffer_results(to_delete_from_primary)
             raise

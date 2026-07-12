@@ -58,7 +58,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=10,
             fetch_batch_size=5,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.01,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -130,7 +130,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=10,
             fetch_batch_size=5,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.1,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -192,7 +192,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=10,
             fetch_batch_size=5,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.1,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -272,7 +272,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 max_fetch_interval=0.1,
                 min_fetch_interval=0.1,
                 fetch_batch_size=5,
-                overfetch_factor=1,
+                max_not_processed_factor=1,
                 flush_interval=0.1,
                 release_stuck_interval=10,
                 release_stuck_timeout=1,
@@ -360,7 +360,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=0.01,
             min_fetch_interval=0.01,
             fetch_batch_size=5,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.1,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -428,7 +428,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=10,
             fetch_batch_size=5,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.1,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -487,7 +487,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=10,
             fetch_batch_size=5,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.1,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -526,7 +526,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=0.01,
             min_fetch_interval=0.01,
             fetch_batch_size=1,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.01,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -581,7 +581,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=10,
             fetch_batch_size=4,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.01,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -668,7 +668,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=10,
             fetch_batch_size=5,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.01,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -711,7 +711,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=10,
             fetch_batch_size=5,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.01,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -779,7 +779,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=10,
             fetch_batch_size=5,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.01,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -823,7 +823,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=10,
             fetch_batch_size=5,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.01,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -878,7 +878,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=0,
             fetch_batch_size=4,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.1,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -930,7 +930,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=0,
             fetch_batch_size=4,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.1,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -940,13 +940,16 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         async def handler(msg: Any) -> None:
             nonlocal attempted
             attempted.append(msg)
+            await asyncio.sleep(1)
 
         for _ in range(7):
             await broker.publish({"message": "hello"}, queue="default1")
         await broker.start()
 
         await asyncio.sleep(0.5)
+        assert len(attempted) == 4
 
+        await asyncio.sleep(1)
         assert len(attempted) == 7
 
     @pytest.mark.asyncio()
@@ -956,6 +959,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         """After first fetch, next fetch happened immediately to
         fill up capacity, because of the overfetch factor.
         """
+        attempted = []
         client = broker.config.broker_config.client
         client.fetch = AsyncMock(wraps=client.fetch)
 
@@ -966,7 +970,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=0,
             fetch_batch_size=4,
-            overfetch_factor=2,
+            max_not_processed_factor=2,
             flush_interval=0.1,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -974,6 +978,8 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             ack_policy=AckPolicy.NACK_ON_ERROR,
         )
         async def handler(msg: Any) -> None:
+            nonlocal attempted
+            attempted.append(msg)
             await asyncio.sleep(4)
 
         for _ in range(7):
@@ -982,6 +988,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
 
         await asyncio.sleep(0.5)
 
+        assert len(attempted) == 4
         assert client.fetch.await_count == 2
 
     @pytest.mark.asyncio()
@@ -1000,7 +1007,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             max_fetch_interval=10,
             min_fetch_interval=0,
             fetch_batch_size=4,
-            overfetch_factor=1,
+            max_not_processed_factor=1,
             flush_interval=0.1,
             release_stuck_interval=10,
             release_stuck_timeout=10,
@@ -1023,6 +1030,86 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         assert len(attempted) == 3
 
     @pytest.mark.asyncio()
+    async def test_consume_max_not_persisted_factor(
+        self, engine: AsyncEngine, recreate_tables: None, broker: SqlBroker
+    ) -> None:
+        """`max_not_persisted_factor` was saturated after 4 fetches."""
+        client = broker.config.broker_config.client
+        client.fetch = AsyncMock(wraps=client.fetch)
+        fetched = []
+
+        @broker.subscriber(
+            queues=["default1"],
+            max_workers=4,
+            retry_strategy=NoRetryStrategy(),
+            max_fetch_interval=10,
+            min_fetch_interval=0,
+            fetch_batch_size=4,
+            max_not_processed_factor=2,
+            max_not_persisted_factor=4,
+            flush_interval=5,
+            release_stuck_interval=10,
+            release_stuck_timeout=10,
+            max_deliveries=20,
+            ack_policy=AckPolicy.NACK_ON_ERROR,
+        )
+        async def handler(msg: Any) -> None:
+            nonlocal fetched
+            await asyncio.sleep(0)
+            fetched.append(msg)
+
+        for _ in range(20):
+            await broker.publish({"message": "hello"}, queue="default1")
+        await broker.start()
+
+        await asyncio.sleep(0.5)
+
+        assert len(fetched) == 16
+        assert client.fetch.await_count == 4
+
+    @pytest.mark.asyncio()
+    async def test_consume_max_not_persisted_factor_freed_capacity(
+        self, engine: AsyncEngine, recreate_tables: None, broker: SqlBroker
+    ) -> None:
+        """Top up freed `max_not_persisted_factor` capacity."""
+        client = broker.config.broker_config.client
+        client.fetch = AsyncMock(wraps=client.fetch)
+        fetched = []
+
+        @broker.subscriber(
+            queues=["default1"],
+            max_workers=4,
+            retry_strategy=NoRetryStrategy(),
+            max_fetch_interval=10,
+            min_fetch_interval=0,
+            fetch_batch_size=4,
+            max_not_processed_factor=2,
+            max_not_persisted_factor=4,
+            flush_interval=2,
+            release_stuck_interval=10,
+            release_stuck_timeout=10,
+            max_deliveries=20,
+            ack_policy=AckPolicy.NACK_ON_ERROR,
+        )
+        async def handler(msg: Any) -> None:
+            nonlocal fetched
+            await asyncio.sleep(0)
+            fetched.append(msg)
+
+        for _ in range(20):
+            await broker.publish({"message": "hello"}, queue="default1")
+        await broker.start()
+
+        await asyncio.sleep(0.5)
+
+        assert len(fetched) == 16
+        assert client.fetch.await_count == 4
+
+        await asyncio.sleep(2)
+
+        assert len(fetched) == 20
+
+    @pytest.mark.asyncio()
     async def test_consume_release_stuck(
         self, engine: AsyncEngine, recreate_tables: None, event: asyncio.Event
     ) -> None:
@@ -1041,7 +1128,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 max_fetch_interval=0,
                 min_fetch_interval=0,
                 fetch_batch_size=5,
-                overfetch_factor=1,
+                max_not_processed_factor=1,
                 flush_interval=10,
                 release_stuck_interval=10,
                 release_stuck_timeout=0.5,
@@ -1093,7 +1180,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 max_fetch_interval=0,
                 min_fetch_interval=0,
                 fetch_batch_size=10,
-                overfetch_factor=1,
+                max_not_processed_factor=1,
                 flush_interval=1,
                 release_stuck_interval=10,
                 release_stuck_timeout=10,
@@ -1107,7 +1194,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 max_fetch_interval=0,
                 min_fetch_interval=0,
                 fetch_batch_size=10,
-                overfetch_factor=1,
+                max_not_processed_factor=1,
                 flush_interval=1,
                 release_stuck_interval=10,
                 release_stuck_timeout=10,
@@ -1121,7 +1208,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 max_fetch_interval=0,
                 min_fetch_interval=0,
                 fetch_batch_size=10,
-                overfetch_factor=1,
+                max_not_processed_factor=1,
                 flush_interval=1,
                 release_stuck_interval=10,
                 release_stuck_timeout=10,
