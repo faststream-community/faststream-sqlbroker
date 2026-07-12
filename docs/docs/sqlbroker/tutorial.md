@@ -228,3 +228,57 @@ And relay the messages from the database to another broker.
 ```python linenums="1"
 {!> docs_src/sqlbroker/transactional_outbox.py [ln:30-51]!}
 ```
+
+## Observability
+
+FastStream already supplies Prometheus metrics for message publishing and processing rates and latencies through its
+[Prometheus middleware](../getting-started/observability/prometheus.md){.external-link target="_blank"}.
+
+<figure markdown="span">
+  ![Grafana panels from the FastStream Prometheus middleware: publish and process rates, publish and process duration percentiles, messages in process, and received message size](../assets/img/faststream-processing-metrics.png){ width="100%" .on-glb }
+</figure>
+
+SQLBroker additionally provides metrics derived from the messages persisted in the database:
+
+- `sqlbroker_messages` — messages in the primary table, labeled by `queue` and
+  `state`.
+- `sqlbroker_most_overdue_message_age_seconds` — how long the most overdue message has
+  been eligible for processing, labeled by `queue` and `state`.
+- `sqlbroker_archived_messages` — messages in the archive table, labeled by
+  `queue` and `state`.
+- `sqlbroker_state_collection_last_success_timestamp_seconds` — Unix timestamp
+  of the last successful database sample.
+
+<figure markdown="span">
+  ![Grafana panels from the SQLBroker state sampler: messages by queue and state, oldest message age, and archived messages by queue and state](../assets/img/sqlbroker-state-metrics.png){ width="100%" .on-glb }
+</figure>
+
+### Standalone sampler
+
+If the sampler runs in every broker node, each node queries the shared database and reports database-wide values and exports a duplicate copy of the same series. Prefer one standalone sampler per database, using the packaged
+`sqlbroker-state-metrics` command:
+
+```console
+pip install "faststream-sqlbroker[cli]"
+sqlbroker-state-metrics \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --message-table message \
+    --archive-table message_archive \
+    --interval 30 \
+    --database-url postgresql+asyncpg://user:pass@localhost/mydb # pragma: allowlist secret
+```
+
+### In-broker sampler
+
+The sampler can also run as part of the broker. Install the Prometheus dependency and pass the registry exposed by your metrics endpoint to `SqlBrokerStateMetricsConfig`:
+
+```console
+pip install "faststream-sqlbroker[prometheus]"
+```
+
+```python linenums="1"
+{!> docs_src/sqlbroker/observability_in_broker.py !}
+```
+
+Mount `metrics_app` at `/metrics` in your ASGI application. These database-wide gauges must not be summed across instances. This applies even to nominally single-node deployments because rolling restarts can briefly run the old and new broker nodes at the same time.

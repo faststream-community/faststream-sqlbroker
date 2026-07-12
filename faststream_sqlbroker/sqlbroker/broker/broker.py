@@ -32,6 +32,10 @@ if TYPE_CHECKING:
     from faststream.specification.schema.extra.tag import Tag, TagDict
 
     from faststream_sqlbroker.sqlbroker.client import SqlBrokerBaseClient
+    from faststream_sqlbroker.sqlbroker.observability import (
+        SqlBrokerStateMetricsConfig,
+        SqlBrokerStateSampler as SqlBrokerStateSamplerType,
+    )
 
 
 class SqlBroker(
@@ -49,6 +53,7 @@ class SqlBroker(
         engine: AsyncEngine,
         schema: SqlBrokerSchemaConfig | None = None,
         validate_schema_on_start: bool = True,
+        state_metrics_config: "SqlBrokerStateMetricsConfig | None" = None,
         # broker base args
         graceful_timeout: float | None = 15.0,
         decoder: Optional["CustomCallable"] = None,
@@ -123,9 +128,25 @@ class SqlBroker(
             ),
         )
 
+        self._state_metrics_sampler: SqlBrokerStateSamplerType | None
+        if state_metrics_config is not None:
+            from faststream_sqlbroker.sqlbroker.observability.sampler import (
+                SqlBrokerStateSampler,
+            )
+
+            self._state_metrics_sampler = SqlBrokerStateSampler(
+                engine=engine,
+                schema=config.schema,
+                config=state_metrics_config,
+            )
+        else:
+            self._state_metrics_sampler = None
+
     async def start(self) -> None:
         await self.connect()
         await super().start()
+        if self._state_metrics_sampler is not None:
+            self._state_metrics_sampler.start()
 
     async def stop(
         self,
@@ -133,6 +154,8 @@ class SqlBroker(
         exc_val: BaseException | None = None,
         exc_tb: Optional["TracebackType"] = None,
     ) -> None:
+        if self._state_metrics_sampler is not None:
+            await self._state_metrics_sampler.stop()
         await super().stop(exc_type, exc_val, exc_tb)
         if self.config.broker_config.engine:
             await self.config.broker_config.engine.dispose(close=True)
