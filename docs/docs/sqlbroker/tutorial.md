@@ -99,9 +99,10 @@ When `connection` is provided, the message insert participates in the same datab
 - **`queues`** — List of queue names to consume from.
 - **`max_workers`** (default: `1`) — Number of concurrent handler coroutines.
 - **`retry_strategy`** (default: `NoRetryStrategy()`) — Called to determine if and how soon a [Nacked](#nack){.internal-link} message is retried.
-- **`fetch_batch_size`** — Maximum number of messages to fetch in a single batch. A fetch's actual limit might be lower if the free capacity of the acquired-but-not-yet-processed messages set is smaller.
-- **`overfetch_factor`** (default: `1.5`) — Multiplier for `fetch_batch_size` to cap the size of the set of acquired-but-not-yet-processed messages.
-- **`min_fetch_interval`** — Minimum interval between consecutive fetches. If the last fetch was full (returned as many messages as the fetch's limit), the next fetch happens after both (i) minimum fetch interval has passed, and (ii) capacity equal to the fetch batch size has freed up in the set of acquired-but-not-yet-processed messages.
+- **`fetch_batch_size`** — Maximum number of messages to fetch in a single batch. A fetch's actual limit might be lower if either the acquired-but-not-yet-processed or acquired-but-not-yet-persisted set has less free capacity.
+- **`max_not_processed_factor`** (default: `1.5`) — Multiplier for `fetch_batch_size` to cap the size of the set of acquired-but-not-yet-processed messages.
+- **`max_not_persisted_factor`** (default: `2.0`) — Multiplier for `fetch_batch_size` to cap the size of the set of acquired messages whose state has not yet been persisted to the database.
+- **`min_fetch_interval`** — Minimum interval between consecutive fetches. If the last fetch was full (returned as many messages as the fetch's limit), the next fetch happens after both (i) minimum fetch interval has passed, and (ii) capacity equal to the fetch batch size has freed up in both the acquired-but-not-yet-processed and acquired-but-not-yet-persisted sets.
 - **`max_fetch_interval`** — Maximum interval between consecutive fetches.
 - **`flush_interval`** — Interval between flushes of processed message state to the database.
 - **`release_stuck_interval`** (default: `60`) — Interval between checks for stuck [`PROCESSING`](#message-lifecycle){.internal-link} messages.

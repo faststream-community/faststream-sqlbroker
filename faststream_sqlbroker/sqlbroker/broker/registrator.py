@@ -32,7 +32,8 @@ class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
         max_fetch_interval: float,
         min_fetch_interval: float,
         fetch_batch_size: int,
-        overfetch_factor: float = 1.5,
+        max_not_processed_factor: float = 1.5,
+        max_not_persisted_factor: float = 2.0,
         flush_interval: float,
         release_stuck_interval: float = 60,
         release_stuck_timeout: float = 60 * 10,
@@ -70,9 +71,12 @@ class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
             Maximum number of messages to fetch in a single batch. A fetch's
             actual limit might be lower if the free capacity of the
             acquired-but-not-yet-processed messages set is smaller.
-        overfetch_factor:
+        max_not_processed_factor:
             Multiplier for `fetch_batch_size` to size the maximum size of the
             set of acquired-but-not-yet-processed messages. Defaults to `1.5`.
+        max_not_persisted_factor:
+            Multiplier for `fetch_batch_size` to cap the number of acquired
+            messages whose state has not yet been persisted. Defaults to `2.0`.
         flush_interval:
             Interval between flushes of processed message state to the database.
         release_stuck_interval:
@@ -98,7 +102,8 @@ class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
             max_fetch_interval=max_fetch_interval,
             min_fetch_interval=min_fetch_interval,
             fetch_batch_size=fetch_batch_size,
-            overfetch_factor=overfetch_factor,
+            max_not_processed_factor=max_not_processed_factor,
+            max_not_persisted_factor=max_not_persisted_factor,
             flush_interval=flush_interval,
             release_stuck_interval=release_stuck_interval,
             release_stuck_timeout=release_stuck_timeout,

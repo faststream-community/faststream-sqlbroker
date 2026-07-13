@@ -41,7 +41,7 @@ async def test_warn_on_max_deliveries(broker: SqlBroker) -> None:
             max_fetch_interval=1.0,
             min_fetch_interval=0.1,
             fetch_batch_size=10,
-            overfetch_factor=1.0,
+            max_not_processed_factor=1.0,
             flush_interval=0.1,
             release_stuck_interval=10.0,
             release_stuck_timeout=10.0,
@@ -63,7 +63,8 @@ async def test_subscriber_defaults(broker: SqlBroker) -> None:
     assert isinstance(subscriber.config.retry_strategy, NoRetryStrategy)
     assert subscriber.config.max_workers == 1
     assert subscriber.config.ack_policy is AckPolicy.REJECT_ON_ERROR
-    assert subscriber.config.overfetch_factor == 1.5
+    assert subscriber.config.max_not_processed_factor == 1.5
+    assert subscriber.config.max_not_persisted_factor == 2.0
     assert subscriber.config.max_deliveries is None
     assert subscriber.config.release_stuck_interval == 60
     assert subscriber.config.release_stuck_timeout == 60 * 10
@@ -87,7 +88,7 @@ async def test_warn_when_retry_strategy_ignored(broker: SqlBroker) -> None:
             max_fetch_interval=1.0,
             min_fetch_interval=0.1,
             fetch_batch_size=10,
-            overfetch_factor=1.0,
+            max_not_processed_factor=1.0,
             flush_interval=0.1,
             release_stuck_interval=10.0,
             release_stuck_timeout=10.0,
@@ -108,7 +109,7 @@ async def test_warn_when_nack_without_retry_strategy(broker: SqlBroker) -> None:
             max_fetch_interval=1.0,
             min_fetch_interval=0.1,
             fetch_batch_size=10,
-            overfetch_factor=1.0,
+            max_not_processed_factor=1.0,
             flush_interval=0.1,
             release_stuck_interval=10.0,
             release_stuck_timeout=10.0,
@@ -134,7 +135,7 @@ async def test_fail_when_archiving_without_archive_table(
             max_fetch_interval=1.0,
             min_fetch_interval=0.1,
             fetch_batch_size=10,
-            overfetch_factor=1.0,
+            max_not_processed_factor=1.0,
             flush_interval=0.1,
             release_stuck_interval=10.0,
             release_stuck_timeout=10.0,
@@ -154,7 +155,7 @@ async def test_no_fail_when_archiving_disabled_without_archive_table(
         max_fetch_interval=1.0,
         min_fetch_interval=0.1,
         fetch_batch_size=10,
-        overfetch_factor=1.0,
+        max_not_processed_factor=1.0,
         flush_interval=0.1,
         release_stuck_interval=10.0,
         release_stuck_timeout=10.0,
@@ -176,7 +177,7 @@ async def test_warn_when_ack_first_used(broker: SqlBroker) -> None:
             max_fetch_interval=1.0,
             min_fetch_interval=0.1,
             fetch_batch_size=10,
-            overfetch_factor=1.0,
+            max_not_processed_factor=1.0,
             flush_interval=0.1,
             release_stuck_interval=10.0,
             release_stuck_timeout=10.0,
