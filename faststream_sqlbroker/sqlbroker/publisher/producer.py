@@ -12,6 +12,8 @@ from faststream_sqlbroker.sqlbroker.parser import SqlBrokerParser
 from faststream_sqlbroker.sqlbroker.response import SqlBrokerPublishCommand
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from fast_depends.library.serializer import SerializerProto
     from faststream._internal.types import AsyncCallable, CustomCallable
 
@@ -35,9 +37,8 @@ class SqlBrokerProducerProto(ProducerProto[SqlBrokerPublishCommand]):
         msg = "SqlBroker doesn't support synchronous requests."
         raise FeatureNotSupportedException(msg)
 
-    async def publish_batch(self, cmd: "SqlBrokerPublishCommand") -> None:
-        msg = "SqlBroker doesn't support publishing in batches."
-        raise FeatureNotSupportedException(msg)
+    @abstractmethod
+    async def publish_batch(self, cmd: "SqlBrokerPublishCommand") -> None: ...
 
 
 class SqlBrokerProducer(SqlBrokerProducerProto):
@@ -76,33 +77,34 @@ class SqlBrokerProducer(SqlBrokerProducerProto):
 
         headers_to_send = {
             **({"content-type": content_type} if content_type else {}),
-            **cmd.headers_to_publish(),
+            **cmd.headers_to_publish_for(0),
         }
 
         await cast("SqlBrokerBaseClient", self.config.client).enqueue(
             payload=payload,
-            queue=cmd.destination,
+            queue=cmd.queue_for(0),
             headers=headers_to_send,
-            next_attempt_at=cmd.next_attempt_at,
+            next_attempt_at=cmd.next_attempt_at_for(0),
             connection=cmd.connection,
         )
 
     @override
     async def publish_batch(self, cmd: "SqlBrokerPublishCommand") -> None:
-        base_headers = cmd.headers_to_publish()
-
-        items: list[tuple[bytes, dict[str, str]]] = []
-        for body in cmd.batch_bodies:
+        items: list[tuple[bytes, str, dict[str, str], datetime | None]] = []
+        for index, body in enumerate(cmd.batch_bodies):
             payload, content_type = encode_message(body, self.serializer)
             headers = {
                 **({"content-type": content_type} if content_type else {}),
-                **base_headers,
+                **cmd.headers_to_publish_for(index),
             }
-            items.append((payload, headers))
+            items.append((
+                payload,
+                cmd.queue_for(index),
+                headers,
+                cmd.next_attempt_at_for(index),
+            ))
 
         await cast("SqlBrokerBaseClient", self.config.client).enqueue_batch(
             items,
-            queue=cmd.destination,
-            next_attempt_at=cmd.next_attempt_at,
             connection=cmd.connection,
         )

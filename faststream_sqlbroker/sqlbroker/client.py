@@ -109,24 +109,23 @@ class SqlBrokerBaseClient(ABC):
 
     async def enqueue_batch(
         self,
-        items: Sequence[tuple[bytes, dict[str, str]]],
+        items: Sequence[tuple[bytes, str, dict[str, str], datetime | None]],
         *,
-        queue: str,
-        next_attempt_at: datetime | None = None,
         connection: AsyncConnection | None = None,
     ) -> None:
         if not items:
             return
 
-        if next_attempt_at:
+        if any(next_attempt_at is not None for _, _, _, next_attempt_at in items):
+            default_next_attempt_at = datetime.now(timezone.utc).replace(tzinfo=None)
             values = [
                 {
                     "queue": queue,
                     "payload": payload,
                     "headers": headers,
-                    "next_attempt_at": next_attempt_at,
+                    "next_attempt_at": next_attempt_at or default_next_attempt_at,
                 }
-                for payload, headers in items
+                for payload, queue, headers, next_attempt_at in items
             ]
         else:
             values = [
@@ -135,7 +134,7 @@ class SqlBrokerBaseClient(ABC):
                     "payload": payload,
                     "headers": headers,
                 }
-                for payload, headers in items
+                for payload, queue, headers, _ in items
             ]
 
         stmt = insert(self._message_table).values(values)

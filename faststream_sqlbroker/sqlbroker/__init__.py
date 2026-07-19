@@ -3,7 +3,11 @@ from faststream._internal.testing.app import TestApp
 try:
     from .annotations import SqlBrokerMessage
     from .broker import SqlBroker, SqlBrokerPublisher, SqlBrokerRoute, SqlBrokerRouter
-    from .response import SqlBrokerPublishCommand
+    from .response import (
+        SqlBrokerPublishCommand,
+        SqlBrokerPublishMessage,
+        SqlBrokerResponse,
+    )
     from .schema import (
         SqlBrokerCompetingConsumersSchemaVersion,
         SqlBrokerSchemaConfig,
@@ -24,7 +28,9 @@ __all__ = (
     "SqlBrokerCompetingConsumersSchemaVersion",
     "SqlBrokerMessage",
     "SqlBrokerPublishCommand",
+    "SqlBrokerPublishMessage",
     "SqlBrokerPublisher",
+    "SqlBrokerResponse",
     "SqlBrokerRoute",
     "SqlBrokerRouter",
     "SqlBrokerSchemaConfig",

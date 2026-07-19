@@ -66,7 +66,7 @@ The `COMPETING_CONSUMERS` variant (version `1`) uses up to two tables — `messa
 {!> docs_src/sqlbroker/publish.py [ln:1-16]!}
 ```
 
-The broker's and publisher's (see [publishing](../getting-started/publishing/index.md){.internal-link}) `.publish()` methods accept:
+The broker's and publisher's (see [publishing](../getting-started/publishing/index.md){.external-link target="_blank"}) `.publish()` methods accept:
 
 - **`message`** — The message body.
 - **`queue`** (default: `""`) — The target queue name.
@@ -86,6 +86,14 @@ If `next_attempt_at` is provided, the message won't be fetched until that time.
 When `connection` is provided, the message insert participates in the same database transaction as your other operations, enabling the [transactional outbox pattern](https://microservices.io/patterns/data/transactional-outbox.html){.external-link target="_blank"}.
 ```python linenums="1"
 {!> docs_src/sqlbroker/publish.py [ln:24-30]!}
+```
+
+### Batch publishing
+
+The broker's and publisher's `.publish_batch()` methods insert all messages in a single SQL statement. They accept the same arguments as [`.publish()`](#publishing){.internal-link}, applied to every message in the batch. Wrap an individual payload in `SqlBrokerPublishMessage` to override its `queue`, `headers`, `correlation_id`, or `next_attempt_at`.
+
+```python linenums="1"
+{!> docs_src/sqlbroker/publish_batch.py [ln:16-42]!}
 ```
 
 ## Subscribing

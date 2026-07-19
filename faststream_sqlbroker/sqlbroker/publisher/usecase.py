@@ -59,6 +59,32 @@ class LogicPublisher(PublisherUsecase):
             _extra_middlewares=(),
         )
 
+    async def publish_batch(
+        self,
+        *messages: "SendableMessage",
+        queue: str = "",
+        headers: dict[str, str] | None = None,
+        next_attempt_at: datetime | None = None,
+        connection: AsyncConnection | None = None,
+        correlation_id: str | None = None,
+    ) -> None:
+        if not messages:
+            return
+
+        cmd = SqlBrokerPublishCommand(
+            *messages,
+            queue=queue or self.queue,
+            headers=self.headers | (headers or {}),
+            next_attempt_at=next_attempt_at,
+            connection=connection,
+        )
+
+        await self._basic_publish_batch(
+            cmd,
+            producer=self._outer_config.producer,
+            _extra_middlewares=(),
+        )
+
     @override
     async def _publish(
         self,
