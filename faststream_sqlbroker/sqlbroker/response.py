@@ -56,6 +56,17 @@ class SqlBrokerResponse(Response):
 
 
 class SqlBrokerPublishCommand(BatchPublishCommand):
+    """TODO: per-message args aren't very native in FastStream.
+
+    Per-message overrides (queue/headers/correlation_id/next_attempt_at) are
+    carried on ``SqlBrokerResponse`` bodies and looked up positionally against
+    ``batch_bodies`` at publish time. This is fragile: anything that reorders or
+    filters ``batch_bodies`` after construction (e.g. a publish middleware)
+    desyncs the overrides from their bodies. This mirrors FastStream's own Kafka
+    per-message keys and is awaiting a more comprehensive upstream fix — see
+    https://github.com/ag2ai/faststream/issues/2943.
+    """
+
     def __init__(
         self,
         message: "SendableMessage",
