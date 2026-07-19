@@ -90,7 +90,7 @@ When `connection` is provided, the message insert participates in the same datab
 
 ### Batch publishing
 
-The broker's and publisher's `.publish_batch()` methods insert all messages in a single SQL statement. They accept the same arguments as [`.publish()`](#publishing){.internal-link}, applied to every message in the batch. Wrap an individual payload in `SqlBrokerPublishMessage` to override its `queue`, `headers`, `correlation_id`, or `next_attempt_at`.
+The broker's and publisher's `.publish_batch()` methods insert all messages in a single SQL statement. They accept the same arguments as [`.publish()`](#publishing){.internal-link}, applied to every message in the batch. Wrap an individual payload in `SqlBrokerPublishMessage` to override its `queue`, `headers`, or `next_attempt_at`.
 
 ```python linenums="1"
 {!> docs_src/sqlbroker/publish_batch.py [ln:16-42]!}
