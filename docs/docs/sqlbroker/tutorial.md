@@ -155,21 +155,19 @@ Set `ack_policy` on the subscriber to control what happens after handler executi
 - `AckPolicy.NACK_ON_ERROR` — On success, [Acks](#ack){.internal-link} the message. On exception, [Nacks](#nack){.internal-link} the message. With `NoRetryStrategy()` or `None` in `retry_strategy`, this has the same effect as `REJECT_ON_ERROR`.
 - `AckPolicy.MANUAL` — Requires explicit `msg.ack()`, `msg.nack()`, or `msg.reject()` in the handler. In the absence of explicit action, the message is [Rejected](#reject){.internal-link} as a safety precaution.
 
-Automatic acknowledgement applies only if the handler did not already call one of the manual acknowledgement methods.
-
 #### Manual
 
-Use `AckPolicy.MANUAL` when the handler should decide the outcome explicitly with `msg.ack()`, `msg.nack()`, or `msg.reject()`.
+Use `AckPolicy.MANUAL` when the handler *has* to apply the outcome explicitly with `msg.ack()`, `msg.nack()`, or `msg.reject()`.
 
 ```python linenums="1"
 {!> docs_src/sqlbroker/acknowledgements.py [ln:29-39]!}
 ```
 
-Manual acknowledgements can also be used with any other `ack_policy`, not just `AckPolicy.MANUAL`. They override the `ack_policy` driven action.
+Manual acknowledgements can be used with any [`ack_policy`](#automatic-via-ackpolicy){.internal-link}: they override the automatic action.
 
 ### Retry strategies
 
-When a message is [Nacked](#nack){.internal-link} (either manually with `msg.nack()` or by `AckPolicy.NACK_ON_ERROR`), the `retry_strategy` determines if and when the message should be retried. By default, `NoRetryStrategy()` disables retries. All strategies accept common parameters:
+When a message is [Nacked](#nack){.internal-link} (either manually with `msg.nack()` or by `AckPolicy.NACK_ON_ERROR`), the `retry_strategy` determines if and when the message should be retried. The default strategy - `NoRetryStrategy()` - disables retries. All strategies accept as parameters:
 
 - `max_attempts` - Maximum number of processing attempts.
 - `max_total_delay_seconds` - Maximum delay between the first and last attempt.
