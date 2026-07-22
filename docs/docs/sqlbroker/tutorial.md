@@ -121,7 +121,7 @@ The broker's and publisher's `.publish_batch()` methods insert all messages in a
 - **`retain_in_archive_on_reject`** (default: `True`) — [Rejected](#reject){.internal-link} messages, in addition to being removed from the primary table, are also persisted in the archive table, where they serve as a [dead-letter queue](../sqlbroker/design.md#dead-letter-queue){.internal-link}. Requires the broker to define an archive table (`message_archive_table_name`).
 
 
-### Message Lifecycle
+### Message lifecycle
 
 A published message starts out in the `message` table with a `PENDING` status. Once a subscriber acquires it, the row is marked as `PROCESSING` and the message is processed.
 
