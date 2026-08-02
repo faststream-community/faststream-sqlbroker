@@ -11,6 +11,7 @@ app = FastStream(broker)
 
 publisher_sqlbroker = broker.publisher()
 
+
 @app.after_startup
 async def publish_batch_examples():
     await broker.publish_batch(

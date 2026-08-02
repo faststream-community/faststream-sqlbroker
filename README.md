@@ -53,7 +53,6 @@ publisher_kafka = broker_kafka.publisher("kafka_topic")
 @broker_sqlbroker.subscriber(
     queues=["sqlbroker_queue"],
     max_fetch_interval=1,
-    min_fetch_interval=0,
     fetch_batch_size=10,
     flush_interval=3,
 )

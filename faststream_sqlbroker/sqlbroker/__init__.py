@@ -1,7 +1,7 @@
 from faststream._internal.testing.app import TestApp
 
 try:
-    from .annotations import SqlBrokerMessage
+    from .annotations import SqlBrokerBatchMessage, SqlBrokerMessage
     from .broker import SqlBroker, SqlBrokerPublisher, SqlBrokerRoute, SqlBrokerRouter
     from .response import (
         SqlBrokerPublishCommand,
@@ -25,6 +25,7 @@ except ImportError as e:
 
 __all__ = (
     "SqlBroker",
+    "SqlBrokerBatchMessage",
     "SqlBrokerCompetingConsumersSchemaVersion",
     "SqlBrokerMessage",
     "SqlBrokerPublishCommand",

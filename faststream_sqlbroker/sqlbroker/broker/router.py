@@ -12,10 +12,25 @@ from faststream._internal.broker.router import (
 )
 from faststream.middlewares import AckPolicy
 
-from faststream_sqlbroker.sqlbroker.broker.registrator import SqlBrokerRegistrator
+from faststream_sqlbroker.sqlbroker.broker.registrator import (
+    ACK_POLICY_DEFAULT,
+    BATCH_DEFAULT,
+    BATCH_MAX_ACCUMULATION_TIMEOUT_FACTOR_DEFAULT,
+    BATCH_MAX_RECORDS_DEFAULT,
+    MAX_DELIVERIES_DEFAULT,
+    MAX_NOT_PERSISTED_FACTOR_DEFAULT,
+    MAX_NOT_PROCESSED_FACTOR_DEFAULT,
+    MAX_WORKERS_DEFAULT,
+    RELEASE_STUCK_INTERVAL_DEFAULT,
+    RELEASE_STUCK_TIMEOUT_DEFAULT,
+    RETAIN_IN_ARCHIVE_ON_ACK_DEFAULT,
+    RETAIN_IN_ARCHIVE_ON_REJECT_DEFAULT,
+    RETRY_STRATEGY_DEFAULT,
+    SqlBrokerRegistrator,
+)
 from faststream_sqlbroker.sqlbroker.configs.broker import SqlBrokerConfig
 from faststream_sqlbroker.sqlbroker.message import SqlBrokerInnerMessage
-from faststream_sqlbroker.sqlbroker.retry import NoRetryStrategy, RetryStrategyProto
+from faststream_sqlbroker.sqlbroker.retry import RetryStrategyProto
 
 if TYPE_CHECKING:
     from fast_depends.dependencies import Dependant
@@ -24,8 +39,6 @@ if TYPE_CHECKING:
         BrokerMiddleware,
         CustomCallable,
     )
-
-_DEFAULT_RETRY_STRATEGY = NoRetryStrategy()
 
 
 class SqlBrokerPublisher(ArgsContainer):
@@ -79,18 +92,25 @@ class SqlBrokerRoute(SubscriberRoute):
         queues: list[str],
         *,
         publishers: Iterable[SqlBrokerPublisher] = (),
-        max_workers: int = 1,
-        retry_strategy: RetryStrategyProto | None = _DEFAULT_RETRY_STRATEGY,
+        max_workers: int = MAX_WORKERS_DEFAULT,
+        retry_strategy: RetryStrategyProto | None = RETRY_STRATEGY_DEFAULT,
         max_fetch_interval: float,
-        min_fetch_interval: float,
+        min_fetch_interval: float | None = None,
         fetch_batch_size: int,
-        max_not_processed_factor: float = 1.5,
-        max_not_persisted_factor: float = 1.5,
+        max_not_processed_factor: float = MAX_NOT_PROCESSED_FACTOR_DEFAULT,
+        max_not_persisted_factor: float = MAX_NOT_PERSISTED_FACTOR_DEFAULT,
         flush_interval: float,
-        release_stuck_interval: float = 60,
-        release_stuck_timeout: float = 60 * 10,
-        max_deliveries: int | None = None,
-        ack_policy: AckPolicy = AckPolicy.REJECT_ON_ERROR,
+        release_stuck_interval: float = RELEASE_STUCK_INTERVAL_DEFAULT,
+        release_stuck_timeout: float = RELEASE_STUCK_TIMEOUT_DEFAULT,
+        max_deliveries: int | None = MAX_DELIVERIES_DEFAULT,
+        batch: bool = BATCH_DEFAULT,
+        batch_max_records: int | None = BATCH_MAX_RECORDS_DEFAULT,
+        batch_max_accumulation_timeout_factor: float = (
+            BATCH_MAX_ACCUMULATION_TIMEOUT_FACTOR_DEFAULT
+        ),
+        ack_policy: AckPolicy = ACK_POLICY_DEFAULT,
+        retain_in_archive_on_ack: bool = RETAIN_IN_ARCHIVE_ON_ACK_DEFAULT,
+        retain_in_archive_on_reject: bool = RETAIN_IN_ARCHIVE_ON_REJECT_DEFAULT,
         # broker args
         dependencies: Iterable["Dependant"] = (),
         parser: Optional["CustomCallable"] = None,
@@ -106,38 +126,71 @@ class SqlBrokerRoute(SubscriberRoute):
             call:
                 Message handler function
                 to wrap the same with `@broker.subscriber(...)` way.
-            queues: Queue names to consume messages from.
+            queues:
+                List of queue names to consume from.
             publishers: SqlBroker publishers to broadcast the handler result.
-            max_workers: Number of workers to process messages concurrently.
+            max_workers:
+                Number of concurrent handler coroutines.
             retry_strategy:
-                Called to determine if and when a message might be retried.
-                Defaults to `NoRetryStrategy()`.
+                Called to determine if and how soon a Nacked message is retried.
             max_fetch_interval:
-                The maximum allowed interval between consecutive fetches.
+                Maximum interval between consecutive fetches.
             min_fetch_interval:
-                The minimum allowed interval between consecutive fetches.
+                Minimum interval between consecutive fetches. If the last fetch was
+                full (returned as many messages as the fetch's limit), the next fetch
+                happens after both (i) minimum fetch interval has passed, and (ii)
+                capacity equal to the fetch batch size has freed up in both the
+                acquired-but-not-yet-processed and acquired-but-not-yet-persisted
+                sets.
             fetch_batch_size:
-                The maximum allowed number of messages to fetch in a single batch.
+                Maximum number of messages to fetch in a single batch. A fetch's
+                actual limit might be lower if either the
+                acquired-but-not-yet-processed or acquired-but-not-yet-persisted set
+                has less free capacity.
             max_not_processed_factor:
-                The factor by which the fetch_batch_size is multiplied.
-                Defaults to `1.5`.
+                Multiplier for `fetch_batch_size` to cap the size of the set of
+                acquired-but-not-yet-processed messages.
             max_not_persisted_factor:
-                The factor by which the fetch_batch_size is multiplied to cap
-                acquired messages whose state has not yet been persisted.
-                Defaults to `2.0`.
+                Multiplier for `fetch_batch_size` to cap the size of the set of
+                acquired messages whose state has not yet been persisted to the
+                database. Since this set always contains the
+                acquired-but-not-yet-processed one, setting it below
+                `max_not_processed_factor` makes the latter have no effect and
+                emits a warning.
             flush_interval:
-                The interval at which the state of messages is flushed to the database.
+                Interval between flushes of processed message state to the database.
             release_stuck_interval:
-                The interval at which the PROCESSING-state messages are marked
-                back as PENDING. Defaults to `60`.
+                Interval between checks for stuck `PROCESSING` messages.
             release_stuck_timeout:
-                Timeout for releasing stuck messages. Defaults to `600`.
+                Interval since `acquired_at` after which a `PROCESSING` message is
+                considered stuck and is released back to `PENDING`.
             max_deliveries:
-                The maximum number of deliveries allowed for a message. Useful
-                for poison message protection.
+                Maximum number of deliveries allowed for a message for poison
+                message protection. If set, messages that have reached this limit
+                are Rejected without processing. Note that this might violate
+                at-least-once processing semantics.
+            batch:
+                Call the handler once per group of messages rather than once per
+                message to enable batch consumption. Requires `max_workers=1`.
+            batch_max_records:
+                For `batch=True`, maximum number of messages in a single handler
+                batch. Must not exceed `fetch_batch_size` multiplied by either
+                `max_not_processed_factor` or `max_not_persisted_factor`.
+            batch_max_accumulation_timeout_factor:
+                For `batch=True`, multiplier for `max_fetch_interval` used to
+                determine the batch accumulation timeout. The effective timeout is
+                `max_fetch_interval * batch_max_accumulation_timeout_factor + 5 ms`.
             ack_policy:
-                Acknowledgement policy. Defaults to
-                `AckPolicy.REJECT_ON_ERROR`.
+                `AckPolicy` that controls acknowledgement behavior.
+            retain_in_archive_on_ack:
+                Acked messages, in addition to being removed from the primary table,
+                are also persisted in the archive table. Requires the broker to
+                define an archive table (`message_archive_table_name`).
+            retain_in_archive_on_reject:
+                Rejected messages, in addition to being removed from the primary
+                table, are also persisted in the archive table, where they serve as
+                a dead-letter queue. Requires the broker to define an archive table
+                (`message_archive_table_name`).
             dependencies: Dependencies list to apply to the subscriber.
             parser: Parser to map original message object to FastStream one.
             decoder: Function to decode FastStream msg bytes body to python objects.
@@ -160,7 +213,12 @@ class SqlBrokerRoute(SubscriberRoute):
             release_stuck_interval=release_stuck_interval,
             release_stuck_timeout=release_stuck_timeout,
             max_deliveries=max_deliveries,
+            batch=batch,
+            batch_max_records=batch_max_records,
+            batch_max_accumulation_timeout_factor=batch_max_accumulation_timeout_factor,
             ack_policy=ack_policy,
+            retain_in_archive_on_ack=retain_in_archive_on_ack,
+            retain_in_archive_on_reject=retain_in_archive_on_reject,
             # basic args
             dependencies=dependencies,
             parser=parser,
