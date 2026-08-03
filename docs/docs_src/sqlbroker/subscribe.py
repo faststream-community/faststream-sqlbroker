@@ -17,7 +17,6 @@ app = FastStream(broker)
         max_attempts=3,
         max_total_delay_seconds=None,
     ),
-    min_fetch_interval=0.1,
     max_fetch_interval=1,
     fetch_batch_size=10,
     flush_interval=1,

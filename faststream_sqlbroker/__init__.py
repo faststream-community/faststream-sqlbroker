@@ -1,5 +1,6 @@
 from .sqlbroker import (
     SqlBroker,
+    SqlBrokerBatchMessage,
     SqlBrokerCompetingConsumersSchemaVersion,
     SqlBrokerMessage,
     SqlBrokerPublishCommand,
@@ -34,6 +35,7 @@ __all__ = (
     "RetryStrategyProto",
     "RetryStrategyTemplate",
     "SqlBroker",
+    "SqlBrokerBatchMessage",
     "SqlBrokerCompetingConsumersSchemaVersion",
     "SqlBrokerMessage",
     "SqlBrokerPublishCommand",

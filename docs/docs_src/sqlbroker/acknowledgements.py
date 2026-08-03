@@ -18,7 +18,6 @@ app = FastStream(broker)
         max_total_delay_seconds=None,
     ),
     max_fetch_interval=1.0,
-    min_fetch_interval=0.1,
     fetch_batch_size=10,
     flush_interval=1.0,
 )
@@ -30,7 +29,6 @@ async def automatic_handler(msg: str) -> None:
     queues=["my_queue"],
     ack_policy=AckPolicy.MANUAL,
     max_fetch_interval=1.0,
-    min_fetch_interval=0.1,
     fetch_batch_size=10,
     flush_interval=1.0,
 )

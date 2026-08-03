@@ -76,16 +76,15 @@ class SqlBrokerInnerMessage:
         if self.state_set:
             return
 
+        self._record_attempt()
         await update_method()
 
         self.state_set = True
 
     async def _ack(self) -> None:
-        self._record_attempt()
         self._mark_completed()
 
     async def _nack(self) -> None:
-        self._record_attempt()
         if self.retry_strategy is None or not (
             next_attempt_at := self.retry_strategy.get_next_attempt_at(
                 first_attempt_at=self.first_attempt_at,
@@ -98,7 +97,6 @@ class SqlBrokerInnerMessage:
             self._mark_retryable(next_attempt_at=next_attempt_at)
 
     async def _reject(self) -> None:
-        self._record_attempt()
         self._mark_failed()
 
     def _record_attempt(self) -> None:
@@ -165,4 +163,32 @@ class SqlBrokerMessage(StreamMessage[SqlBrokerInnerMessage]):
 
     async def reject(self) -> None:
         await self.raw_message.reject()
+        await super().reject()
+
+
+class SqlBrokerBatchMessage(StreamMessage[tuple[SqlBrokerInnerMessage, ...]]):
+    messages: list[SqlBrokerMessage]
+
+    def __init__(
+        self,
+        *args: Any,
+        messages: list[SqlBrokerMessage],
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.messages = messages
+
+    async def ack(self) -> None:
+        for message in self.messages:
+            await message.ack()
+        await super().ack()
+
+    async def nack(self) -> None:
+        for message in self.messages:
+            await message.nack()
+        await super().nack()
+
+    async def reject(self) -> None:
+        for message in self.messages:
+            await message.reject()
         await super().reject()

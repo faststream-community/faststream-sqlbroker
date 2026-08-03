@@ -12,7 +12,7 @@ app = FastStream(broker_sqlbroker, on_startup=[broker_kafka.connect])
 publisher_sqlbroker = broker_sqlbroker.publisher()
 
 
-@app.after_startup # just an example
+@app.after_startup  # just an example
 async def publish_examples():
     async with engine.begin() as connection:
         # ... your other database operations using `connection` ...
@@ -34,7 +34,6 @@ publisher_kafka = broker_kafka.publisher("kafka_topic")
 @broker_sqlbroker.subscriber(
     queues=["sqlbroker_queue"],
     max_fetch_interval=1,
-    min_fetch_interval=0,
     fetch_batch_size=10,
     flush_interval=3,
 )

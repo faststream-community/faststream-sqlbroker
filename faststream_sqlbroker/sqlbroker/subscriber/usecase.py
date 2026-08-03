@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import copy
 import logging
+import time
 from collections.abc import (
     AsyncGenerator,
     AsyncIterator,
@@ -11,7 +12,7 @@ from collections.abc import (
     Iterable,
 )
 from contextlib import asynccontextmanager, suppress
-from typing import TYPE_CHECKING, Any, Literal, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
 from faststream._internal.endpoint.subscriber.mixins import TasksMixin
 from faststream._internal.endpoint.subscriber.usecase import SubscriberUsecase
@@ -26,6 +27,7 @@ from faststream_sqlbroker.sqlbroker.message import (
 from faststream_sqlbroker.sqlbroker.parser import SqlBrokerParser
 
 if TYPE_CHECKING:
+    from faststream._internal.basic_types import LoggerProto
     from faststream._internal.endpoint.publisher.proto import PublisherProto
     from faststream._internal.endpoint.subscriber.call_item import CallsCollection
     from faststream._internal.endpoint.subscriber.specification import (
@@ -97,6 +99,10 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
     @property
     def _queues(self) -> list[str]:
         return [f"{self._outer_config.prefix}{q}" for q in self.config.queues]
+
+    @property
+    def _logger(self) -> "LoggerProto | None":
+        return self._outer_config.logger.logger.logger
 
     async def start(self) -> None:
         self._stop_event.clear()
@@ -227,13 +233,11 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
 
             if message._allow_delivery(
                 max_deliveries=self._max_deliveries,
-                logger=self._outer_config.logger.logger.logger,
+                logger=self._logger,
             ):
                 message.retry_strategy = self._retry_strategy
                 await self.consume(message)
-                await message._assert_state_updated(
-                    self._outer_config.logger.logger.logger
-                )
+                await message._assert_state_updated(self._logger)
 
             self._not_processed_count -= 1
             self._check_if_may_fetch_eagerly()
@@ -344,7 +348,8 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
     async def _wait_until_stop_event(
         self,
         awaitable: Awaitable[_CoroutineReturnType],
-    ) -> tuple[_CoroutineReturnType, Literal[False]] | tuple[None, Literal[True]]:
+        timeout: float | None = None,
+    ) -> tuple[_CoroutineReturnType | None, bool]:
         if isinstance(awaitable, asyncio.Task):
             coro_task: asyncio.Task[_CoroutineReturnType] = awaitable
         else:
@@ -355,11 +360,19 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             coro_task = self.add_task(_runner)
 
         done, _ = await asyncio.wait(
-            [coro_task, self._stop_task], return_when=asyncio.FIRST_COMPLETED
+            [coro_task, self._stop_task],
+            timeout=timeout,
+            return_when=asyncio.FIRST_COMPLETED,
         )
 
+        if not done:
+            coro_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await coro_task
+            return None, self._stop_event.is_set()
+
         if coro_task in done:
-            return await coro_task, False
+            return (await coro_task, self._stop_event.is_set())
 
         if self._stop_task in done:
             coro_task.cancel()
@@ -422,3 +435,96 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         message: "StreamMessage[SqlBrokerInnerMessage]",
     ) -> Iterable["PublisherProto"]:
         return ()
+
+
+class SqlBrokerBatchSubscriber(SqlBrokerSubscriber):
+    def __init__(
+        self,
+        config: "SqlBrokerSubscriberConfig",
+        specification: "SubscriberSpecification[Any, Any]",
+        calls: "CallsCollection[Any]",
+    ) -> None:
+        super().__init__(config, specification, calls)
+        self._setup_batch_parser(config)
+        self._batch_max_records = config.batch_max_records
+        self._batch_timeout = (
+            config.max_fetch_interval * config.batch_max_accumulation_timeout_factor
+            + 0.005
+        )
+
+    def _setup_batch_parser(self, config: "SqlBrokerSubscriberConfig") -> None:
+        config.parser = self.parser.parse_batch
+        config.decoder = self.parser.decode_batch
+        self._parser = config.parser
+        self._decoder = config.decoder
+
+    async def _gather_batch(self) -> tuple[SqlBrokerInnerMessage, ...] | None:
+        batch = []
+        message, stopped = await self._wait_until_stop_event(
+            self._pending_consume_queue.get()
+        )
+        if message:
+            batch.append(message)
+        if stopped:
+            self._requeue_batch(batch)
+            return None
+        if not message:
+            return None
+
+        deadline = time.monotonic() + self._batch_timeout
+
+        while (
+            len(batch) < self._batch_max_records
+            and (remaining := (deadline - time.monotonic())) > 0
+        ):
+            try:
+                batch.append(self._pending_consume_queue.get_nowait())
+                continue
+
+            except asyncio.QueueEmpty:
+                message, stopped = await self._wait_until_stop_event(
+                    self._pending_consume_queue.get(),
+                    timeout=remaining,
+                )
+                if message:
+                    batch.append(message)
+                if stopped:
+                    self._requeue_batch(batch)
+                    return None
+
+        return tuple(batch)
+
+    def _requeue_batch(self, batch: list[SqlBrokerInnerMessage]) -> None:
+        while batch:
+            message = batch.pop()
+            message._mark_pending()
+            self._not_processed_count -= 1
+            self._buffer_results(message)
+            self._pending_consume_queue.task_done()
+
+    @override
+    async def _worker_loop(self) -> None:
+        while True:
+            if not (batch := await self._gather_batch()):
+                break
+
+            to_process: list[SqlBrokerInnerMessage] = []
+            for message in batch:
+                if message._allow_delivery(
+                    max_deliveries=self._max_deliveries,
+                    logger=self._logger,
+                ):
+                    message.retry_strategy = self._retry_strategy
+                    to_process.append(message)
+
+            if to_process:
+                await self.consume(tuple(to_process))  # type: ignore[arg-type]
+                for message in to_process:
+                    await message._assert_state_updated(self._logger)
+
+            for message in batch:
+                self._not_processed_count -= 1
+                self._buffer_results(message)
+                self._pending_consume_queue.task_done()
+
+            self._check_if_may_fetch_eagerly()

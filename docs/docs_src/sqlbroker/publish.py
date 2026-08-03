@@ -11,6 +11,7 @@ app = FastStream(broker)
 
 publisher_sqlbroker = broker.publisher()
 
+
 @app.after_startup
 async def publish_examples():
     await publisher_sqlbroker.publish("Hello, SqlBroker!", queue="my_queue")

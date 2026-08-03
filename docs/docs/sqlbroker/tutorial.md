@@ -63,7 +63,7 @@ The `COMPETING_CONSUMERS` variant (version `1`) uses up to two tables — `messa
 ## Publishing
 
 ```python linenums="1"
-{!> docs_src/sqlbroker/publish.py [ln:1-16]!}
+{!> docs_src/sqlbroker/publish.py [ln:1-17]!}
 ```
 
 The broker's and publisher's (see [publishing](../getting-started/publishing/index.md){.external-link target="_blank"}) `.publish()` methods accept:
@@ -78,14 +78,14 @@ The broker's and publisher's (see [publishing](../getting-started/publishing/ind
 
 If `next_attempt_at` is provided, the message won't be fetched until that time.
 ```python linenums="1"
-{!> docs_src/sqlbroker/publish.py [ln:18-22]!}
+{!> docs_src/sqlbroker/publish.py [ln:19-23]!}
 ```
 
 ### Transactional publishing
 
 When `connection` is provided, the message insert participates in the same database transaction as your other operations, enabling the [transactional outbox pattern](https://microservices.io/patterns/data/transactional-outbox.html){.external-link target="_blank"}.
 ```python linenums="1"
-{!> docs_src/sqlbroker/publish.py [ln:24-30]!}
+{!> docs_src/sqlbroker/publish.py [ln:25-31]!}
 ```
 
 ### Batch publishing
@@ -109,19 +109,22 @@ The broker's and publisher's `.publish_batch()` methods insert all messages in a
 - **`retry_strategy`** (default: `NoRetryStrategy()`) — Called to determine if and how soon a [Nacked](#nack){.internal-link} message is retried.
 - **`fetch_batch_size`** — Maximum number of messages to fetch in a single batch. A fetch's actual limit might be lower if either the acquired-but-not-yet-processed or acquired-but-not-yet-persisted set has less free capacity.
 - **`max_not_processed_factor`** (default: `1.5`) — Multiplier for `fetch_batch_size` to cap the size of the set of acquired-but-not-yet-processed messages.
-- **`max_not_persisted_factor`** (default: `2.0`) — Multiplier for `fetch_batch_size` to cap the size of the set of acquired messages whose state has not yet been persisted to the database.
-- **`min_fetch_interval`** — Minimum interval between consecutive fetches. If the last fetch was full (returned as many messages as the fetch's limit), the next fetch happens after both (i) minimum fetch interval has passed, and (ii) capacity equal to the fetch batch size has freed up in both the acquired-but-not-yet-processed and acquired-but-not-yet-persisted sets.
+- **`max_not_persisted_factor`** (default: `2.0`) — Multiplier for `fetch_batch_size` to cap the size of the set of acquired messages whose state has not yet been persisted to the database. Since this set always contains the acquired-but-not-yet-processed one, setting it below `max_not_processed_factor` makes the latter have no effect and emits a warning.
+- **`min_fetch_interval`** (default: `max_fetch_interval`) — Minimum interval between consecutive fetches. If the last fetch was full (returned as many messages as the fetch's limit), the next fetch happens after both (i) minimum fetch interval has passed, and (ii) capacity equal to the fetch batch size has freed up in both the acquired-but-not-yet-processed and acquired-but-not-yet-persisted sets.
 - **`max_fetch_interval`** — Maximum interval between consecutive fetches.
 - **`flush_interval`** — Interval between flushes of processed message state to the database.
 - **`release_stuck_interval`** (default: `60`) — Interval between checks for stuck [`PROCESSING`](#message-lifecycle){.internal-link} messages.
 - **`release_stuck_timeout`** (default: `60 * 10`) — Interval since `acquired_at` after which a [`PROCESSING`](#message-lifecycle){.internal-link} message is considered stuck and is released back to [`PENDING`](#message-lifecycle){.internal-link}.
 - **`max_deliveries`** (default: `None`) — Maximum number of deliveries allowed for a message for [poison message protection](../sqlbroker/design.md#poison-message-protection){.internal-link}. If set, messages that have reached this limit are [Rejected](#reject){.internal-link} without processing. Note that this might violate at-least-once processing semantics.
+- **`batch`** (default: `False`) — Call the handler once per group of messages rather than once per message to enable [batch consumption](#batch-consumption){.internal-link}. Requires `max_workers=1`.
+- **`batch_max_records`** (default: `fetch_batch_size`) — For `batch=True`, maximum number of messages in a single handler batch. Must not exceed `fetch_batch_size` multiplied by either `max_not_processed_factor` or `max_not_persisted_factor`.
+- **`batch_max_accumulation_timeout_factor`** (default: `0`) — For `batch=True`, multiplier for `max_fetch_interval` used to determine the batch accumulation timeout. The effective timeout is `max_fetch_interval * batch_max_accumulation_timeout_factor + 5 ms`.
 - **`ack_policy`** (default: `REJECT_ON_ERROR`) — [`AckPolicy`](#automatic-via-ackpolicy){.internal-link} that controls acknowledgement behavior.
 - **`retain_in_archive_on_ack`** (default: `True`) — [Acked](#ack){.internal-link} messages, in addition to being removed from the primary table, are also persisted in the archive table. Requires the broker to define an archive table (`message_archive_table_name`).
 - **`retain_in_archive_on_reject`** (default: `True`) — [Rejected](#reject){.internal-link} messages, in addition to being removed from the primary table, are also persisted in the archive table, where they serve as a [dead-letter queue](../sqlbroker/design.md#dead-letter-queue){.internal-link}. Requires the broker to define an archive table (`message_archive_table_name`).
 
 
-### Message Lifecycle
+### Message lifecycle
 
 A published message starts out in the `message` table with a `PENDING` status. Once a subscriber acquires it, the row is marked as `PROCESSING` and the message is processed.
 
@@ -146,7 +149,7 @@ Each message's [outcome](#message-lifecycle){.internal-link} is applied either a
 Set `ack_policy` on the subscriber to control what happens after handler execution depending on whether the handler raised an exception or returned.
 
 ```python linenums="1"
-{!> docs_src/sqlbroker/acknowledgements.py [ln:1-26]!}
+{!> docs_src/sqlbroker/acknowledgements.py [ln:1-25]!}
 ```
 
 - `AckPolicy.ACK` — [Acks](#ack){.internal-link} the message after the handler attempt, even if the handler raised an exception.
@@ -160,7 +163,7 @@ Set `ack_policy` on the subscriber to control what happens after handler executi
 Use `AckPolicy.MANUAL` when the handler *has* to apply the outcome explicitly with `msg.ack()`, `msg.nack()`, or `msg.reject()`.
 
 ```python linenums="1"
-{!> docs_src/sqlbroker/acknowledgements.py [ln:29-39]!}
+{!> docs_src/sqlbroker/acknowledgements.py [ln:28-37]!}
 ```
 
 Manual acknowledgements can be used with any [`ack_policy`](#automatic-via-ackpolicy){.internal-link}: they override the automatic action.
@@ -222,6 +225,20 @@ No retries — the message is marked as [Rejected](#reject){.internal-link} on t
 {!> docs_src/sqlbroker/retry.py [ln:47-49]!}
 ```
 
+### Batch consumption
+
+Set `batch=True` to call the handler once per group of messages rather than once per message. This amortizes per-message overhead — a single handler invocation can, for example, write many rows to the database in one transaction.
+
+```python linenums="1"
+{!> docs_src/sqlbroker/batch.py !}
+```
+
+The handler's first argument is the list of message bodies, annotated as in single-message mode — `list[bytes]`, `list[dict]`, or a list of a Pydantic model. The handler may optionally take a `SqlBrokerBatchMessage` — the wrapper over the whole batch, whose `.messages` attribute holds the per-record `SqlBrokerMessage` wrappers in the same order.
+
+The accumulation timer starts when the first message arrives and lasts `max_fetch_interval * batch_max_accumulation_timeout_factor + 5 ms`. Messages are collected until either `batch_max_records` is reached or the timer expires.
+
+Automatic outcomes via [`ack_policy`](#automatic-via-ackpolicy){.internal-link} and [manual](#manual){.internal-link} operations on `SqlBrokerBatchMessage` apply to the whole batch; [manual](#manual){.internal-link} operations on the individual `SqlBrokerMessage` objects in `.messages` apply per message.
+
 ## Transactional outbox
 
 Implementing the [transactional outbox pattern](https://microservices.io/patterns/data/transactional-outbox.html){.external-link target="_blank"} becomes as simple as the following.
@@ -233,7 +250,7 @@ Publish messages transactionally with your other database operations.
 
 And relay the messages from the database to another broker.
 ```python linenums="1"
-{!> docs_src/sqlbroker/transactional_outbox.py [ln:30-51]!}
+{!> docs_src/sqlbroker/transactional_outbox.py [ln:30-50]!}
 ```
 
 ## Observability
