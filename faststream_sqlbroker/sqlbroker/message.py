@@ -1,6 +1,6 @@
 import enum
 import logging
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
@@ -61,30 +61,37 @@ class SqlBrokerInnerMessage:
 
         self.state_set = False
 
-    async def ack(self) -> None:
-        await self._update_state_if_not_set(self._ack)
+    def ack(self) -> None:
+        self._update_state_if_not_set(self._ack)
 
-    async def nack(self) -> None:
-        await self._update_state_if_not_set(self._nack)
+    def nack(self) -> None:
+        self._update_state_if_not_set(self._nack)
 
-    async def reject(self) -> None:
-        await self._update_state_if_not_set(self._reject)
+    def reject(self) -> None:
+        self._update_state_if_not_set(self._reject)
 
-    async def _update_state_if_not_set(
-        self, update_method: Callable[[], Coroutine[Any, Any, None]]
+    def requeue_from_fetched(self) -> None:
+        self._requeue_from_fetched()
+
+    def _update_state_if_not_set(
+        self,
+        update_method: Callable[[], None],
+        record_attempt: bool = True,
     ) -> None:
         if self.state_set:
             return
 
-        self._record_attempt()
-        await update_method()
+        if record_attempt:
+            self._record_attempt()
+        update_method()
 
         self.state_set = True
 
-    async def _ack(self) -> None:
-        self._mark_completed()
+    def _ack(self) -> None:
+        self.state = SqlBrokerMessageState.COMPLETED
+        self.acquired_at = None
 
-    async def _nack(self) -> None:
+    def _nack(self) -> None:
         if self.retry_strategy is None or not (
             next_attempt_at := self.retry_strategy.get_next_attempt_at(
                 first_attempt_at=self.first_attempt_at,
@@ -92,32 +99,26 @@ class SqlBrokerInnerMessage:
                 attempts_count=self.attempts_count,
             )
         ):
-            self._mark_failed()
+            self._reject()
         else:
-            self._mark_retryable(next_attempt_at=next_attempt_at)
+            self.state = SqlBrokerMessageState.RETRYABLE
+            self.next_attempt_at = next_attempt_at
+            self.acquired_at = None
 
-    async def _reject(self) -> None:
-        self._mark_failed()
+    def _reject(self) -> None:
+        self.state = SqlBrokerMessageState.FAILED
+        self.acquired_at = None
+
+    def _requeue_from_fetched(self) -> None:
+        self.state = SqlBrokerMessageState.PENDING
+        self.deliveries_count -= 1
+        self.acquired_at = None
 
     def _record_attempt(self) -> None:
         self.attempts_count += 1
         self.last_attempt_at = datetime.now(tz=timezone.utc).replace(tzinfo=None)
         if self.attempts_count == 1:
             self.first_attempt_at = self.last_attempt_at
-
-    def _mark_completed(self) -> None:
-        self.state = SqlBrokerMessageState.COMPLETED
-
-    def _mark_retryable(self, *, next_attempt_at: datetime) -> None:
-        self.state = SqlBrokerMessageState.RETRYABLE
-        self.next_attempt_at = next_attempt_at
-
-    def _mark_failed(self) -> None:
-        self.state = SqlBrokerMessageState.FAILED
-
-    def _mark_pending(self) -> None:
-        self.state = SqlBrokerMessageState.PENDING
-        self.deliveries_count -= 1
 
     def _allow_delivery(
         self,
@@ -126,7 +127,7 @@ class SqlBrokerInnerMessage:
         logger: "LoggerProto | None",
     ) -> bool:
         if max_deliveries is not None and self.deliveries_count > max_deliveries:
-            self._mark_failed()
+            self._reject()
             if logger:
                 logger.log(
                     logging.ERROR,
@@ -146,7 +147,7 @@ class SqlBrokerInnerMessage:
                     f"acknowledgement in the handler. As a precaution, the message "
                     f"was Rejected.",
                 )
-            await self.reject()
+            self.reject()
 
     def __repr__(self) -> str:
         return f"SqlBrokerMessage(id={self.id}, queue={self.queue})"
@@ -154,15 +155,15 @@ class SqlBrokerInnerMessage:
 
 class SqlBrokerMessage(StreamMessage[SqlBrokerInnerMessage]):
     async def ack(self) -> None:
-        await self.raw_message.ack()
+        self.raw_message.ack()
         await super().ack()
 
     async def nack(self) -> None:
-        await self.raw_message.nack()
+        self.raw_message.nack()
         await super().nack()
 
     async def reject(self) -> None:
-        await self.raw_message.reject()
+        self.raw_message.reject()
         await super().reject()
 
 

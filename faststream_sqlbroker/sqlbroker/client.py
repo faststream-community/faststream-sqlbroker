@@ -195,6 +195,7 @@ class SqlBrokerBaseClient(ABC):
                 "first_attempt_at": message.first_attempt_at,
                 "next_attempt_at": message.next_attempt_at,
                 "last_attempt_at": message.last_attempt_at,
+                "acquired_at": message.acquired_at,
             }
             for message in messages
         ]
@@ -208,7 +209,7 @@ class SqlBrokerBaseClient(ABC):
                 first_attempt_at=bindparam("first_attempt_at"),
                 next_attempt_at=bindparam("next_attempt_at"),
                 last_attempt_at=bindparam("last_attempt_at"),
-                acquired_at=None,
+                acquired_at=bindparam("acquired_at"),
             )
         )
         async with self._engine.begin() as conn:
