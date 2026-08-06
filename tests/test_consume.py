@@ -1,6 +1,10 @@
 import asyncio
 import json
 import logging
+import multiprocessing
+import os
+import signal
+import time
 import tracemalloc
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
@@ -16,7 +20,7 @@ from faststream.annotations import (
 )
 from pydantic import BaseModel
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from faststream_sqlbroker.sqlbroker.annotations import (
     SqlBroker as SqlBrokerAnnotation,
@@ -1307,11 +1311,49 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
     async def test_consume_release_stuck(
         self, engine: AsyncEngine, recreate_tables: None, event: asyncio.Event
     ) -> None:
-        """Broker was stopped mid-processing, processing wasn't finalized/flushed,
-        messages were requeued on next startup.
+        """Consumer was SIGKILL'd mid-processing with no flush; release_stuck
+        requeues the messages so a new broker can process them.
         """
-        async with self.get_broker(engine=engine, graceful_timeout=0.1) as broker:
-            attempted = []
+        async with self.get_broker(engine=engine) as publisher:
+            await publisher.publish({"message": "hello1"}, queue="default1")
+            await publisher.publish({"message": "hello2"}, queue="default1")
+
+        database_url = engine.url.render_as_string(hide_password=False)
+        ctx = multiprocessing.get_context("spawn")
+        process = ctx.Process(
+            target=_run_broker_until_killed,
+            args=(database_url,),
+            daemon=True,
+        )
+        process.start()
+        try:
+            await _wait_for_message_state_count(
+                engine,
+                state=SqlBrokerMessageState.PROCESSING,
+                count=2,
+            )
+            assert process.pid is not None
+            os.kill(process.pid, signal.SIGKILL)
+            process.join(timeout=5)
+            assert not process.is_alive()
+        finally:
+            if process.is_alive() and process.pid is not None:
+                os.kill(process.pid, signal.SIGKILL)
+                process.join(timeout=5)
+
+        async with engine.begin() as conn:
+            result = await conn.execute(text("SELECT * FROM message;"))
+        rows = result.mappings().all()
+        assert len(rows) == 2
+        assert rows[0]["state"] == SqlBrokerMessageState.PROCESSING.name
+        assert rows[0]["attempts_count"] == 0
+        assert rows[0]["deliveries_count"] == 1
+        assert rows[1]["state"] == SqlBrokerMessageState.PROCESSING.name
+        assert rows[1]["attempts_count"] == 0
+        assert rows[1]["deliveries_count"] == 1
+
+        attempted: list[Any] = []
+        async with self.get_broker(engine=engine) as broker:
 
             @broker.subscriber(
                 queues=["default1"],
@@ -1323,38 +1365,83 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 min_fetch_interval=0,
                 fetch_batch_size=5,
                 max_not_processed_factor=1,
-                flush_interval=10,
-                release_stuck_interval=10,
+                flush_interval=0.1,
+                release_stuck_interval=0.1,
                 release_stuck_timeout=0.5,
                 max_deliveries=20,
                 ack_policy=AckPolicy.NACK_ON_ERROR,
             )
             async def handler(msg: Any) -> None:
-                nonlocal attempted
                 attempted.append(msg)
+
+            await broker.start()
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and len(attempted) < 2:  # noqa: ASYNC110
+                await asyncio.sleep(0.05)
+            assert len(attempted) == 2
+
+    @pytest.mark.asyncio()
+    @pytest.mark.parametrize("batch", (False, True))
+    async def test_consume_requeue_on_graceful_timeout(
+        self,
+        engine: AsyncEngine,
+        recreate_tables: None,
+        event: asyncio.Event,
+        batch: bool,
+    ) -> None:
+        """When graceful_timeout cancels an in-flight consume, the message is
+        flushed back to PENDING.
+        """
+        async with self.get_broker(engine=engine, graceful_timeout=0.1) as broker:
+            attempted: list[Any] = []
+
+            @broker.subscriber(
+                queues=["default1"],
+                max_workers=1,
+                retry_strategy=ConstantRetryStrategy(
+                    delay_seconds=0, max_total_delay_seconds=None, max_attempts=None
+                ),
+                max_fetch_interval=0.1,
+                min_fetch_interval=0.1,
+                fetch_batch_size=5,
+                max_not_processed_factor=1,
+                flush_interval=10,
+                release_stuck_interval=10,
+                release_stuck_timeout=10,
+                max_deliveries=20,
+                ack_policy=AckPolicy.NACK_ON_ERROR,
+                batch=batch,
+                batch_max_records=1 if batch else None,
+                batch_max_accumulation_timeout_factor=0,
+            )
+            async def handler(msg: Any) -> None:
+                nonlocal attempted
+                if batch:
+                    attempted.extend(msg)
+                else:
+                    attempted.append(msg)
+                event.set()
                 await asyncio.sleep(1)
 
             await broker.publish({"message": "hello1"}, queue="default1")
-            await broker.publish({"message": "hello2"}, queue="default1")
-
-            # message is attempted but not finalized and not flushed
             await broker.start()
-            await asyncio.sleep(0.5)
+            await asyncio.wait_for(event.wait(), timeout=self.timeout)
             await broker.stop()
 
-            assert len(attempted) == 2
+            assert len(attempted) == 1
+
             async with engine.begin() as conn:
                 result = await conn.execute(text("SELECT * FROM message;"))
-            result = result.mappings().all()
-            assert len(result) == 2
-            assert result[0]["state"] == SqlBrokerMessageState.PROCESSING.name
-            assert result[0]["attempts_count"] == 0
-            assert result[0]["deliveries_count"] == 1
+            result = result.mappings().one()
+            assert result["state"] == SqlBrokerMessageState.PENDING.name
+            assert result["attempts_count"] == 0
+            assert result["deliveries_count"] == 1
+            assert result["acquired_at"] is None
 
             await broker.start()
             await asyncio.sleep(0.5)
 
-            assert len(attempted) == 4
+            assert len(attempted) == 2
 
     @pytest.mark.asyncio()
     async def test_consume_work_sharing(
@@ -2254,3 +2341,58 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         assert len(batch_.batch_headers) == 2
         assert batch_.batch_headers[0]["header_1"] == "value_1"
         assert batch_.batch_headers[1]["header_2"] == "value_2"
+
+
+def _run_broker_until_killed(database_url: str) -> None:
+    asyncio.run(_broker_consume_forever(database_url))
+
+
+async def _broker_consume_forever(database_url: str) -> None:
+    engine = create_async_engine(database_url)
+    broker = SqlBroker(engine=engine)
+    try:
+
+        @broker.subscriber(
+            queues=["default1"],
+            max_workers=2,
+            retry_strategy=ConstantRetryStrategy(
+                delay_seconds=0, max_total_delay_seconds=None, max_attempts=2
+            ),
+            max_fetch_interval=0,
+            min_fetch_interval=0,
+            fetch_batch_size=5,
+            max_not_processed_factor=1,
+            flush_interval=10,
+            release_stuck_interval=10,
+            release_stuck_timeout=10,
+            max_deliveries=20,
+            ack_policy=AckPolicy.NACK_ON_ERROR,
+        )
+        async def handler(msg: Any) -> None:
+            await asyncio.sleep(3600)
+
+        await broker.start()
+        await asyncio.Event().wait()
+    finally:
+        await engine.dispose()
+
+
+async def _wait_for_message_state_count(
+    engine: AsyncEngine,
+    *,
+    state: SqlBrokerMessageState,
+    count: int,
+    timeout: float = 5,
+) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        async with engine.begin() as conn:
+            result = await conn.execute(
+                text("SELECT COUNT(*) FROM message WHERE state = :state"),
+                {"state": state.name},
+            )
+            if result.scalar_one() == count:
+                return
+        await asyncio.sleep(0.05)
+    msg = f"Timed out waiting for {count} message(s) in state {state.name}"
+    raise AssertionError(msg)
