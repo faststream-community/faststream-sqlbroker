@@ -6,7 +6,6 @@ import time
 from collections.abc import (
     AsyncGenerator,
     AsyncIterator,
-    Awaitable,
     Callable,
     Coroutine,
     Iterable,
@@ -92,6 +91,8 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         self._may_fetch_event = asyncio.Event()
         self._retry_on_client_error_delay = 5
 
+        self._tasks: list[asyncio.Task[Any]] = []
+
     @property
     def _client(self) -> SqlBrokerBaseClient:
         return cast("SqlBrokerBaseClient", self.config._outer_config.client)
@@ -108,14 +109,14 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         self._stop_event.clear()
 
         for _ in range(self._worker_count):
-            self.add_task(self._worker_loop)
+            self._add_task(self._worker_loop, permanent=True)
 
         self._post_start()
 
         for loop in [self._fetch_loop, self._flush_loop, self._release_stuck_loop]:
-            self.add_task(loop)
+            self._add_task(loop, permanent=True)
 
-        self._stop_task = self.add_task(self._stop_event.wait)
+        self._stop_task = asyncio.create_task(self._stop_event.wait())
 
         await super().start()
 
@@ -150,24 +151,33 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         except Exception:  # nosec B110
             pass
 
+    def _add_task(
+        self,
+        callable: Callable[..., Coroutine[Any, Any, Any]],
+        permanent: bool = False,
+    ) -> asyncio.Task[Any]:
+        if permanent:
+            task = self.add_task(callable)
+            self._tasks.append(task)
+            return task
+        task = asyncio.create_task(callable())
+        self._tasks.append(task)
+        return task
+
     @asynccontextmanager
     async def _task_context(
         self,
-        func: Callable[..., Coroutine[Any, Any, Any]],
-        func_args: tuple[Any, ...] | None = None,
-        func_kwargs: dict[str, Any] | None = None,
-    ) -> AsyncGenerator[asyncio.Task[Any], None]:
-        task = self.add_task(func, func_args, func_kwargs)
+        coro: Coroutine[Any, Any, _CoroutineReturnType],
+    ) -> AsyncGenerator[asyncio.Task[_CoroutineReturnType], None]:
+        task = asyncio.create_task(coro)
         yield task
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
 
     async def _finalize_workers(self) -> None:
-        """Wait for loops to finish and flush results."""
-        await asyncio.gather(*self.tasks, return_exceptions=True)
-        task_flush = self.add_task(self._flush_results)
-        await task_flush
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        await self._flush_results()
 
     @property
     def _free_slots(self) -> int:
@@ -208,7 +218,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                 self._check_if_may_fetch_eagerly()
 
             async with self._task_context(
-                asyncio.sleep, func_args=(self._min_fetch_interval,)
+                asyncio.sleep(self._min_fetch_interval)
             ) as min_fetch_interval_reached_task:
                 match await self._wait_for_first_event_or_timeout(
                     self._may_fetch_event,
@@ -343,21 +353,19 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             drained = True
 
         if drained:
-            self.add_task(self._flush_results)
+            self._add_task(self._flush_results)
 
     async def _wait_until_stop_event(
         self,
-        awaitable: Awaitable[_CoroutineReturnType],
+        awaitable: asyncio.Task[_CoroutineReturnType]
+        | Coroutine[_CoroutineReturnType, Any, Any],
         timeout: float | None = None,
     ) -> tuple[_CoroutineReturnType | None, bool]:
-        if isinstance(awaitable, asyncio.Task):
-            coro_task: asyncio.Task[_CoroutineReturnType] = awaitable
-        else:
-
-            async def _runner() -> _CoroutineReturnType:
-                return await awaitable
-
-            coro_task = self.add_task(_runner)
+        match awaitable:
+            case asyncio.Task():
+                coro_task: asyncio.Task[_CoroutineReturnType] = awaitable
+            case Coroutine():
+                coro_task = asyncio.create_task(awaitable)
 
         done, _ = await asyncio.wait(
             [coro_task, self._stop_task],
@@ -396,7 +404,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                 return event
 
         task_to_event: dict[asyncio.Task[bool], asyncio.Event] = {
-            self.add_task(event.wait): event for event in events
+            asyncio.create_task(event.wait()): event for event in events
         }
 
         try:

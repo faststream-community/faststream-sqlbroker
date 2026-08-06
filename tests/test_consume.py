@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import tracemalloc
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -117,6 +118,46 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message;"))
         assert len(result.all()) == 0
+
+    @pytest.mark.asyncio()
+    async def test_consume_does_not_leak_memory(
+        self,
+        broker: SqlBroker,
+    ) -> None:
+        messages, interval = 1_000, 100
+        consumed = 0
+        snapshots: list[int] = []
+        complete = asyncio.Event()
+        was_tracing = tracemalloc.is_tracing()
+        if not was_tracing:
+            tracemalloc.start()
+
+        @broker.subscriber(
+            queues=["default1"],
+            max_workers=1,
+            max_fetch_interval=0.01,
+            fetch_batch_size=25,
+            flush_interval=0.01,
+        )
+        async def handler(_: Any) -> None:
+            nonlocal consumed
+            consumed += 1
+            if consumed % interval == 0:
+                snapshots.append(tracemalloc.get_traced_memory()[0])
+            if consumed == messages:
+                complete.set()
+
+        try:
+            await broker.publish_batch(*range(messages), queue="default1")
+            snapshots.append(tracemalloc.get_traced_memory()[0])
+            await broker.start()
+            await asyncio.wait_for(complete.wait(), timeout=10)
+        finally:
+            if not was_tracing:
+                tracemalloc.stop()
+
+        assert len(snapshots) == messages // interval + 1
+        assert max(snapshots[1:]) - min(snapshots[1:]) < 1_000_000
 
     @pytest.mark.asyncio()
     async def test_consume_nack_retry(
