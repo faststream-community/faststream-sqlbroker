@@ -29,8 +29,6 @@ class SqlBrokerMessageState(str, enum.Enum):
 
 
 class SqlBrokerInnerMessage:
-    retry_strategy: RetryStrategyProto | None
-
     def __init__(
         self,
         id: int,
@@ -45,6 +43,7 @@ class SqlBrokerInnerMessage:
         next_attempt_at: datetime | None,
         last_attempt_at: datetime | None,
         acquired_at: datetime | None,
+        retry_strategy: RetryStrategyProto | None = None,
     ) -> None:
         self.id = id
         self.queue = queue
@@ -58,6 +57,8 @@ class SqlBrokerInnerMessage:
         self.next_attempt_at = next_attempt_at
         self.last_attempt_at = last_attempt_at
         self.acquired_at = acquired_at
+
+        self.retry_strategy = retry_strategy
 
         self.state_set = False
 

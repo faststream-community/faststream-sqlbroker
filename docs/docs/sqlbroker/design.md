@@ -43,7 +43,7 @@ On start, the subscriber spawns four types of concurrent loops:
 
 **3. Flush loop** &mdash; Periodically flushes the buffered message state changes to the database. `COMPLETED` and `FAILED` messages are removed from the primary table and, depending on `retain_in_archive_on_ack` and `retain_in_archive_on_reject`, copied to the archive table. The state of `RETRYABLE` messages is updated in the primary table.
 
-**4. Release stuck loop** &mdash; Periodically releases messages that have been stuck in `PROCESSING` state for longer than `release_stuck_timeout` since `acquired_at`. These messages are marked back as `PENDING`.
+**4. Release stuck loop** &mdash; Periodically releases messages in the subscriber's queues that have been stuck in `PROCESSING` state for longer than `release_stuck_timeout` since `acquired_at`. These messages are marked back as `PENDING`.
 
 On stop, all loops are gracefully stopped. Messages that have been acquired but are not yet being processed are drained from the internal queue and marked back as `PENDING`. The subscriber waits for all tasks to complete within `graceful_timeout`, then performs a final flush.
 

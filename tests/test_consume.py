@@ -1316,7 +1316,8 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         self, engine: AsyncEngine, recreate_tables: None, event: asyncio.Event
     ) -> None:
         """Consumer was SIGKILL'd mid-processing with no flush; release_stuck
-        requeues the messages so a new broker can process them.
+        requeues the messages so a new broker can process them. Also verifies
+        release_stuck is scoped to the subscriber's queues.
         """
         async with self.get_broker(engine=engine) as publisher:
             await publisher.publish({"message": "hello1"}, queue="default1")
@@ -1337,6 +1338,26 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
 
         attempted: list[Any] = []
         async with self.get_broker(engine=engine) as broker:
+            stuck_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+                seconds=60
+            )
+            client = broker.config.broker_config.client
+            async with engine.begin() as conn:
+                await conn.execute(
+                    client._message_table.insert().values(
+                        queue="other",
+                        headers={},
+                        payload=b'{"message":"other"}',
+                        state=SqlBrokerMessageState.PROCESSING,
+                        attempts_count=0,
+                        deliveries_count=1,
+                        created_at=stuck_at,
+                        first_attempt_at=None,
+                        next_attempt_at=stuck_at,
+                        last_attempt_at=None,
+                        acquired_at=stuck_at,
+                    )
+                )
 
             @broker.subscriber(
                 queues=["default1"],
@@ -1362,6 +1383,19 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             while time.monotonic() < deadline and len(attempted) < 2:  # noqa: ASYNC110
                 await asyncio.sleep(0.05)
             assert len(attempted) == 2
+
+            async with engine.begin() as conn:
+                other = (
+                    (
+                        await conn.execute(
+                            text("SELECT * FROM message WHERE queue = 'other';")
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+            assert other["state"] == SqlBrokerMessageState.PROCESSING.name
+            assert other["acquired_at"] is not None
 
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("batch", (False, True), ids=("batch=False", "batch=True"))

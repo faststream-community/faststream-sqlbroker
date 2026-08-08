@@ -102,10 +102,12 @@ class SqlBrokerRegistrator(Registrator[SqlBrokerInnerMessage, SqlBrokerConfig]):
         flush_interval:
             Interval between flushes of processed message state to the database.
         release_stuck_interval:
-            Interval between checks for stuck `PROCESSING` messages.
+            Interval between checks for stuck `PROCESSING` messages in the
+            subscriber's queues.
         release_stuck_timeout:
-            Interval since `acquired_at` after which a `PROCESSING` message is
-            considered stuck and is released back to `PENDING`.
+            Interval since `acquired_at` after which a `PROCESSING` message in
+            the subscriber's queues is considered stuck and is released back to
+            `PENDING`.
         max_deliveries:
             Maximum number of deliveries allowed for a message for poison
             message protection. If set, messages that have reached this limit

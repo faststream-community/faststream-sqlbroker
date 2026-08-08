@@ -250,13 +250,14 @@ class SqlBrokerBaseClient(ABC):
                 )  # fmt: skip
                 await conn.execute(delete_stmt)
 
-    async def release_stuck(self, timeout: float) -> None:
+    async def release_stuck(self, queues: list[str], timeout: float) -> None:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         select_stuck = (
             select(self._message_table.c.id)
             .where(
                 self._message_table.c.state == SqlBrokerMessageState.PROCESSING,
                 self._message_table.c.acquired_at < now - timedelta(seconds=timeout),
+                or_(*(self._message_table.c.queue == queue for queue in queues)),
             )
         )  # fmt: skip
         stmt = (
@@ -352,7 +353,7 @@ class SqlBrokerMySqlClient(SqlBrokerPostgresClient):
         ordered_rows = [rows_by_id[id_] for id_ in ready_ids if id_ in rows_by_id]
         return [SqlBrokerInnerMessage(**row) for row in ordered_rows]
 
-    async def release_stuck(self, timeout: float) -> None:
+    async def release_stuck(self, queues: list[str], timeout: float) -> None:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         select_stuck = (
@@ -360,6 +361,7 @@ class SqlBrokerMySqlClient(SqlBrokerPostgresClient):
             .where(
                 self._message_table.c.state == SqlBrokerMessageState.PROCESSING,
                 self._message_table.c.acquired_at < now - timedelta(seconds=timeout),
+                or_(*(self._message_table.c.queue == queue for queue in queues)),
             )
             .subquery()
         )

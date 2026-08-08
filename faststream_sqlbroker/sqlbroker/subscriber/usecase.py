@@ -127,7 +127,10 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                 asyncio.gather(*self._tasks, return_exceptions=True),
                 timeout=self.graceful_timeout,
             )
-        await self._flush_results()
+        try:
+            await self._flush_results()
+        except Exception as exc:
+            self._log(logging.ERROR, "SqlBrokerClient error", exc_info=exc)
         await super().stop()
 
     @override
@@ -280,7 +283,9 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                 break
 
             try:
-                await self._client.release_stuck(timeout=self._release_stuck_timeout)
+                await self._client.release_stuck(
+                    self._queues, timeout=self._release_stuck_timeout
+                )
             except Exception as exc:
                 self._log(logging.ERROR, "SqlBrokerClient error", exc_info=exc)
                 await self._sleep_until_stop_event(self._retry_on_client_error_delay)
