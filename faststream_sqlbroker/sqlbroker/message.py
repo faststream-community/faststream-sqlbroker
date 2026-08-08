@@ -34,12 +34,12 @@ class SqlBrokerInnerMessage:
         id: int,
         queue: str,
         state: SqlBrokerMessageState,
-        headers: dict[str, Any],
+        headers: dict[str, Any] | None,
         payload: bytes,
         attempts_count: int,
         deliveries_count: int,
         created_at: datetime,
-        first_attempt_at: datetime,
+        first_attempt_at: datetime | None,
         next_attempt_at: datetime | None,
         last_attempt_at: datetime | None,
         acquired_at: datetime | None,
@@ -48,7 +48,7 @@ class SqlBrokerInnerMessage:
         self.id = id
         self.queue = queue
         self.state = state
-        self.headers = headers
+        self.headers = headers if headers is not None else {}
         self.payload = payload
         self.attempts_count = attempts_count
         self.deliveries_count = deliveries_count
@@ -96,7 +96,7 @@ class SqlBrokerInnerMessage:
     def _nack(self) -> None:
         if self.retry_strategy is None or not (
             next_attempt_at := self.retry_strategy.get_next_attempt_at(
-                first_attempt_at=self.first_attempt_at,
+                first_attempt_at=cast("datetime", self.first_attempt_at),
                 last_attempt_at=cast("datetime", self.last_attempt_at),
                 attempts_count=self.attempts_count,
             )
@@ -123,7 +123,7 @@ class SqlBrokerInnerMessage:
     def _record_attempt(self) -> None:
         self.attempts_count += 1
         self.last_attempt_at = datetime.now(tz=timezone.utc).replace(tzinfo=None)
-        if self.attempts_count == 1:
+        if self.first_attempt_at is None:
             self.first_attempt_at = self.last_attempt_at
 
     def _allow_delivery(
