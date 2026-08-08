@@ -60,7 +60,7 @@ class SqlBrokerInnerMessage:
 
         self.retry_strategy = retry_strategy
 
-        self.state_set = False
+        self._state_set = False
 
     def ack(self) -> None:
         self._update_state_if_not_set(self._ack)
@@ -81,13 +81,13 @@ class SqlBrokerInnerMessage:
         self,
         update_method: Callable[[], None],
     ) -> None:
-        if self.state_set:
+        if self._state_set:
             return
 
         self._record_attempt()
         update_method()
 
-        self.state_set = True
+        self._state_set = True
 
     def _ack(self) -> None:
         self.state = SqlBrokerMessageState.COMPLETED
@@ -144,7 +144,7 @@ class SqlBrokerInnerMessage:
         return True
 
     async def _assert_state_updated(self, logger: "LoggerProto | None") -> None:
-        if not self.state_set:
+        if not self._state_set:
             if logger:
                 logger.log(
                     logging.ERROR,

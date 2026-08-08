@@ -41,10 +41,6 @@ if TYPE_CHECKING:
 _CoroutineReturnType = TypeVar("_CoroutineReturnType")
 
 
-class StopEventSetError(Exception):
-    pass
-
-
 class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
     def __init__(
         self,
@@ -86,7 +82,6 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             asyncio.Queue()
         )
         self._result_buffer: list[SqlBrokerInnerMessage] = []
-        self._last_fetch_was_full = False
         self._stop_event = asyncio.Event()
         self._may_fetch_event = asyncio.Event()
         self._retry_on_client_error_delay = 5
@@ -107,6 +102,9 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
 
     async def start(self) -> None:
         self._stop_event.clear()
+        self._may_fetch_event.clear()
+        self._not_processed_count = 0
+        self._not_persisted_count = 0
 
         for _ in range(self._worker_count):
             self._add_task(self._worker_loop, permanent=True)
@@ -211,8 +209,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                     self._not_persisted_count += 1
                     await self._pending_consume_queue.put(msg)
 
-                self._last_fetch_was_full = len(batch) == limit
-                if not self._last_fetch_was_full:
+                if not (_last_fetch_was_full := (len(batch) == limit)):
                     await self._sleep_until_stop_event(self._max_fetch_interval)
                     continue
 
