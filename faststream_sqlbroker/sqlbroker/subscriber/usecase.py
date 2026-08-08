@@ -241,19 +241,25 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             if not message:
                 break
 
-            if message._allow_delivery(
-                max_deliveries=self._max_deliveries,
-                logger=self._logger,
-            ):
-                message.retry_strategy = self._retry_strategy
-                await self.consume(message)
-                await message._assert_state_updated(self._logger)
+            try:
+                if message._allow_delivery(
+                    max_deliveries=self._max_deliveries,
+                    logger=self._logger,
+                ):
+                    message.retry_strategy = self._retry_strategy
+                    await self.consume(message)
+                    await message._assert_state_updated(self._logger)
 
-            self._not_processed_count -= 1
-            self._check_if_may_fetch_eagerly()
+            except asyncio.CancelledError:
+                message.requeue_from_attempted()
+                raise
 
-            self._buffer_results(message)
-            self._pending_consume_queue.task_done()
+            finally:
+                self._not_processed_count -= 1
+                self._check_if_may_fetch_eagerly()
+
+                self._buffer_results(message)
+                self._pending_consume_queue.task_done()
 
     async def _flush_loop(self) -> None:
         while True:
@@ -518,14 +524,21 @@ class SqlBrokerBatchSubscriber(SqlBrokerSubscriber):
                     message.retry_strategy = self._retry_strategy
                     to_process.append(message)
 
-            if to_process:
-                await self.consume(tuple(to_process))  # type: ignore[arg-type]
-                for message in to_process:
-                    await message._assert_state_updated(self._logger)
+            try:
+                if to_process:
+                    await self.consume(tuple(to_process))  # type: ignore[arg-type]
+                    for message in to_process:
+                        await message._assert_state_updated(self._logger)
 
-            for message in batch:
-                self._not_processed_count -= 1
-                self._buffer_results(message)
-                self._pending_consume_queue.task_done()
+            except asyncio.CancelledError:
+                for message in batch:
+                    message.requeue_from_attempted()
+                raise
+
+            finally:
+                for message in batch:
+                    self._not_processed_count -= 1
+                    self._buffer_results(message)
+                    self._pending_consume_queue.task_done()
 
             self._check_if_may_fetch_eagerly()

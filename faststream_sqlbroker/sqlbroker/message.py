@@ -73,16 +73,17 @@ class SqlBrokerInnerMessage:
     def requeue_from_fetched(self) -> None:
         self._requeue_from_fetched()
 
+    def requeue_from_attempted(self) -> None:
+        self._requeue_from_attempted()
+
     def _update_state_if_not_set(
         self,
         update_method: Callable[[], None],
-        record_attempt: bool = True,
     ) -> None:
         if self.state_set:
             return
 
-        if record_attempt:
-            self._record_attempt()
+        self._record_attempt()
         update_method()
 
         self.state_set = True
@@ -112,6 +113,10 @@ class SqlBrokerInnerMessage:
     def _requeue_from_fetched(self) -> None:
         self.state = SqlBrokerMessageState.PENDING
         self.deliveries_count -= 1
+        self.acquired_at = None
+
+    def _requeue_from_attempted(self) -> None:
+        self.state = SqlBrokerMessageState.PENDING
         self.acquired_at = None
 
     def _record_attempt(self) -> None:
