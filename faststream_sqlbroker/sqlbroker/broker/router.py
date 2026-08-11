@@ -173,15 +173,18 @@ class SqlBrokerRoute(SubscriberRoute):
                 at-least-once processing semantics.
             batch:
                 Call the handler once per group of messages rather than once per
-                message to enable batch consumption. Requires `max_workers=1`.
+                message. Requires `max_workers=1`.
             batch_max_records:
-                For `batch=True`, maximum number of messages in a single handler
-                batch. Must not exceed `fetch_batch_size` multiplied by either
+                Maximum number of messages in a single handler batch. Must not
+                exceed `fetch_batch_size` multiplied by either
                 `max_not_processed_factor` or `max_not_persisted_factor`.
             batch_max_accumulation_timeout_factor:
-                For `batch=True`, multiplier for `max_fetch_interval` used to
-                determine the batch accumulation timeout. The effective timeout is
+                Multiplier for `max_fetch_interval` used to determine the batch
+                accumulation timeout. The effective timeout is
                 `max_fetch_interval * batch_max_accumulation_timeout_factor + 5 ms`.
+                The accumulation timer starts when the first message arrives.
+                Messages are collected until either `batch_max_records` is reached
+                or the timer expires.
             ack_policy:
                 `AckPolicy` that controls acknowledgement behavior.
             retain_in_archive_on_ack:
