@@ -113,7 +113,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result["archived_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
-            assert as_datetime(result["archived_at"]) > as_datetime(
+            assert as_datetime(result["archived_at"]) >= as_datetime(
                 result["first_attempt_at"]
             )
         else:
@@ -285,7 +285,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result["archived_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
-            assert as_datetime(result["archived_at"]) > as_datetime(
+            assert as_datetime(result["archived_at"]) >= as_datetime(
                 result["first_attempt_at"]
             )
         else:
@@ -319,9 +319,20 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message;"))
         result = result.mappings().one()
+        assert result["queue"] == "default1"
+        assert json.loads(result["payload"]) == {"message": "hello1"}
         assert result["state"] == SqlBrokerMessageState.PROCESSING.name
         assert result["attempts_count"] == 0
         assert result["deliveries_count"] == 1
+        assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert result["first_attempt_at"] is None
+        assert as_datetime(result["next_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert result["last_attempt_at"] is None
+        assert as_datetime(result["acquired_at"]) > as_datetime(result["created_at"])
 
         logger = MagicMock()
         attempted: list[Any] = []
@@ -385,12 +396,17 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                     assert as_datetime(result["created_at"]) < datetime.now(
                         tz=timezone.utc
                     ).replace(tzinfo=None)
+                    assert as_datetime(result["created_at"]) < datetime.now(
+                        tz=timezone.utc
+                    ).replace(tzinfo=None)
                     assert result["first_attempt_at"] is None
                     assert result["last_attempt_at"] is None
-
                     assert as_datetime(result["archived_at"]) < datetime.now(
                         tz=timezone.utc
                     ).replace(tzinfo=None)
+                    assert as_datetime(result["archived_at"]) >= as_datetime(
+                        result["created_at"]
+                    )
                 else:
                     assert len(result.all()) == 0
 
@@ -468,6 +484,12 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result["last_attempt_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
+            assert as_datetime(result["archived_at"]) < datetime.now(
+                tz=timezone.utc
+            ).replace(tzinfo=None)
+            assert as_datetime(result["archived_at"]) >= as_datetime(
+                result["last_attempt_at"]
+            )
         else:
             assert len(result.all()) == 0
 
@@ -529,7 +551,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         assert as_datetime(result["archived_at"]) < datetime.now(tz=timezone.utc).replace(
             tzinfo=None
         )
-        assert as_datetime(result["archived_at"]) > as_datetime(
+        assert as_datetime(result["archived_at"]) >= as_datetime(
             result["first_attempt_at"]
         )
 
@@ -676,6 +698,9 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         if retain_in_archive_on_ack:
             result_1 = result_1.mappings().all()
             assert len(result_1) == 2
+            result_1 = sorted(result_1, key=lambda x: json.loads(x["payload"])["message"])
+            assert result_1[0]["queue"] == "default1"
+            assert json.loads(result_1[0]["payload"]) == {"message": "hello1"}
             assert result_1[0]["state"] == SqlBrokerMessageState.COMPLETED.name
             assert result_1[0]["attempts_count"] == 1
             assert result_1[0]["deliveries_count"] == 1
@@ -694,7 +719,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result_1[0]["archived_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
-            assert as_datetime(result_1[0]["archived_at"]) > as_datetime(
+            assert as_datetime(result_1[0]["archived_at"]) >= as_datetime(
                 result_1[0]["first_attempt_at"]
             )
         else:
@@ -702,6 +727,9 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
 
         result_2 = result_2.mappings().all()
         assert len(result_2) == 2
+        result_2 = sorted(result_2, key=lambda x: json.loads(x["payload"])["message"])
+        assert result_2[0]["queue"] == "default1"
+        assert json.loads(result_2[0]["payload"]) == {"message": "hello3"}
         assert result_2[0]["state"] == SqlBrokerMessageState.PENDING.name
         assert result_2[0]["attempts_count"] == 0
         assert result_2[0]["deliveries_count"] == 0
@@ -753,8 +781,35 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         result = result.mappings().all()
         assert len(result) == 2
+        result = sorted(result, key=lambda x: json.loads(x["payload"])["message"])
+        assert result[0]["queue"] == "default1"
+        assert json.loads(result[0]["payload"]) == {"message": "hello1"}
         assert result[0]["state"] == SqlBrokerMessageState.COMPLETED.name
         assert result[1]["state"] == SqlBrokerMessageState.COMPLETED.name
+        assert result[0]["attempts_count"] == 1
+        assert result[0]["deliveries_count"] == 1
+        assert as_datetime(result[0]["created_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["first_attempt_at"]) > as_datetime(
+            result[0]["created_at"]
+        )
+        assert as_datetime(result[0]["last_attempt_at"]) == as_datetime(
+            result[0]["first_attempt_at"]
+        )
+        assert as_datetime(result[0]["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["archived_at"]) >= as_datetime(
+            result[0]["first_attempt_at"]
+        )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(text("SELECT * FROM message;"))
+        assert len(result.all()) == 0
 
     @pytest.mark.asyncio()
     async def test_consume_manual_nack_takes_precedence(
@@ -795,6 +850,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message;"))
         result = result.mappings().all()
         assert len(result) == 2
+        result = sorted(result, key=lambda x: json.loads(x["payload"])["message"])
         assert result[0]["state"] == SqlBrokerMessageState.RETRYABLE.name
         assert result[1]["state"] == SqlBrokerMessageState.RETRYABLE.name
 
@@ -863,8 +919,35 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         result = result.mappings().all()
         assert len(result) == 2
+        result = sorted(result, key=lambda x: json.loads(x["payload"])["message"])
+        assert result[0]["queue"] == "default1"
+        assert json.loads(result[0]["payload"]) == {"message": "hello1"}
         assert result[0]["state"] == SqlBrokerMessageState.FAILED.name
         assert result[1]["state"] == SqlBrokerMessageState.FAILED.name
+        assert result[0]["attempts_count"] == 1
+        assert result[0]["deliveries_count"] == 1
+        assert as_datetime(result[0]["created_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["first_attempt_at"]) > as_datetime(
+            result[0]["created_at"]
+        )
+        assert as_datetime(result[0]["last_attempt_at"]) == as_datetime(
+            result[0]["first_attempt_at"]
+        )
+        assert as_datetime(result[0]["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["archived_at"]) >= as_datetime(
+            result[0]["first_attempt_at"]
+        )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(text("SELECT * FROM message;"))
+        assert len(result.all()) == 0
 
     @pytest.mark.asyncio()
     async def test_consume_context_fields(
@@ -1329,12 +1412,35 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message;"))
         rows = result.mappings().all()
         assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
         assert rows[0]["state"] == SqlBrokerMessageState.PROCESSING.name
         assert rows[0]["attempts_count"] == 0
         assert rows[0]["deliveries_count"] == 1
+        assert as_datetime(rows[0]["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert rows[0]["first_attempt_at"] is None
+        assert as_datetime(rows[0]["next_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert rows[0]["last_attempt_at"] is None
+        assert as_datetime(rows[0]["acquired_at"]) > as_datetime(rows[0]["created_at"])
+        assert rows[1]["queue"] == "default1"
+        assert json.loads(rows[1]["payload"]) == {"message": "hello2"}
         assert rows[1]["state"] == SqlBrokerMessageState.PROCESSING.name
         assert rows[1]["attempts_count"] == 0
         assert rows[1]["deliveries_count"] == 1
+        assert as_datetime(rows[1]["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert rows[1]["first_attempt_at"] is None
+        assert as_datetime(rows[1]["next_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert rows[1]["last_attempt_at"] is None
+        assert as_datetime(rows[1]["acquired_at"]) > as_datetime(rows[1]["created_at"])
 
         attempted: list[Any] = []
         async with self.get_broker(engine=engine) as broker:
@@ -1416,7 +1522,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 queues=["default1"],
                 max_workers=1,
                 retry_strategy=ConstantRetryStrategy(
-                    delay_seconds=0, max_total_delay_seconds=None, max_attempts=None
+                    delay_seconds=10, max_total_delay_seconds=None, max_attempts=None
                 ),
                 max_fetch_interval=0.1,
                 min_fetch_interval=0.1,
@@ -1451,9 +1557,30 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             async with engine.begin() as conn:
                 result = await conn.execute(text("SELECT * FROM message;"))
             result = result.mappings().one()
+            assert result["queue"] == "default1"
+            assert json.loads(result["payload"]) == {"message": "hello1"}
             assert result["state"] == SqlBrokerMessageState.PENDING.name
-            assert result["attempts_count"] == 1  # TODO: wrong until fixed in upstream FS
+            assert result["attempts_count"] == 0
             assert result["deliveries_count"] == 1
+            assert as_datetime(result["created_at"]) < datetime.now(
+                tz=timezone.utc
+            ).replace(tzinfo=None)
+            assert as_datetime(
+                result["first_attempt_at"]
+            ) < datetime.now(  # TODO: faststream/issues/3000
+                tz=timezone.utc
+            ).replace(tzinfo=None)
+            assert as_datetime(result["first_attempt_at"]) > as_datetime(
+                result["created_at"]
+            )
+            assert as_datetime(
+                result["last_attempt_at"]
+            ) == as_datetime(  # TODO: faststream/issues/3000
+                result["first_attempt_at"]
+            )
+            assert as_datetime(result["next_attempt_at"]) <= as_datetime(
+                datetime.now(tz=timezone.utc).replace(tzinfo=None)
+            )
             assert result["acquired_at"] is None
 
             await broker.start()
@@ -1612,7 +1739,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result["archived_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
-            assert as_datetime(result["archived_at"]) > as_datetime(
+            assert as_datetime(result["archived_at"]) >= as_datetime(
                 result["first_attempt_at"]
             )
 
@@ -1770,12 +1897,21 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message;"))
         rows = result.mappings().all()
         assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
         for row in rows:
             assert row["state"] == SqlBrokerMessageState.PENDING.name
             assert row["attempts_count"] == 0
             assert row["deliveries_count"] == 0
+            assert as_datetime(row["created_at"]) < datetime.now(tz=timezone.utc).replace(
+                tzinfo=None
+            )
             assert row["acquired_at"] is None
             assert row["first_attempt_at"] is None
+            assert as_datetime(row["next_attempt_at"]) < datetime.now(
+                tz=timezone.utc
+            ).replace(tzinfo=None)
             assert row["last_attempt_at"] is None
 
         async with engine.begin() as conn:
@@ -1827,7 +1963,37 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
 
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message_archive;"))
-        assert len(result.all()) == 2
+        rows = result.mappings().all()
+        assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
+        assert rows[0]["state"] == SqlBrokerMessageState.COMPLETED.name
+        assert rows[1]["state"] == SqlBrokerMessageState.COMPLETED.name
+        assert rows[0]["attempts_count"] == 1
+        assert rows[0]["deliveries_count"] == 1
+        assert as_datetime(rows[0]["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(rows[0]["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["first_attempt_at"]) > as_datetime(
+            rows[0]["created_at"]
+        )
+        assert as_datetime(rows[0]["last_attempt_at"]) == as_datetime(
+            rows[0]["first_attempt_at"]
+        )
+        assert as_datetime(rows[0]["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["archived_at"]) >= as_datetime(
+            rows[0]["first_attempt_at"]
+        )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(text("SELECT * FROM message;"))
+        assert len(result.all()) == 0
 
     @pytest.mark.asyncio()
     async def test_consume_batch_automatic_nack(
@@ -1871,9 +2037,27 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message;"))
         rows = result.mappings().all()
         assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
         for row in rows:
             assert row["state"] == SqlBrokerMessageState.RETRYABLE.name
             assert row["attempts_count"] == 1
+            assert row["deliveries_count"] == 1
+            assert as_datetime(row["created_at"]) < datetime.now(tz=timezone.utc).replace(
+                tzinfo=None
+            )
+            assert as_datetime(row["first_attempt_at"]) < datetime.now(
+                tz=timezone.utc
+            ).replace(tzinfo=None)
+            assert as_datetime(row["first_attempt_at"]) > as_datetime(row["created_at"])
+            assert as_datetime(row["last_attempt_at"]) == as_datetime(
+                row["first_attempt_at"]
+            )
+            assert as_datetime(row["next_attempt_at"]) >= as_datetime(
+                row["first_attempt_at"]
+            ) + timedelta(seconds=10)
+            assert row["acquired_at"] is None
 
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message_archive;"))
@@ -1925,16 +2109,74 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         rows = result.mappings().all()
         assert len(rows) == 2
-        assert sorted(row["state"] for row in rows) == [
-            SqlBrokerMessageState.COMPLETED.name,
-            SqlBrokerMessageState.FAILED.name,
-        ]
+        rows_by_state = {row["state"]: row for row in rows}
+        completed = rows_by_state[SqlBrokerMessageState.COMPLETED.name]
+        failed = rows_by_state[SqlBrokerMessageState.FAILED.name]
+        assert completed["queue"] == "default1"
+        assert json.loads(completed["payload"]) == {"message": "hello1"}
+        assert completed["attempts_count"] == 1
+        assert completed["deliveries_count"] == 1
+        assert as_datetime(completed["created_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(completed["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(completed["first_attempt_at"]) > as_datetime(
+            completed["created_at"]
+        )
+        assert as_datetime(completed["last_attempt_at"]) == as_datetime(
+            completed["first_attempt_at"]
+        )
+        assert as_datetime(completed["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(completed["archived_at"]) >= as_datetime(
+            completed["first_attempt_at"]
+        )
+        assert failed["queue"] == "default1"
+        assert json.loads(failed["payload"]) == {"message": "hello2"}
+        assert failed["attempts_count"] == 1
+        assert failed["deliveries_count"] == 1
+        assert as_datetime(failed["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(failed["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(failed["first_attempt_at"]) > as_datetime(failed["created_at"])
+        assert as_datetime(failed["last_attempt_at"]) == as_datetime(
+            failed["first_attempt_at"]
+        )
+        assert as_datetime(failed["archived_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(failed["archived_at"]) >= as_datetime(
+            failed["first_attempt_at"]
+        )
 
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message;"))
         rows = result.mappings().all()
         assert len(rows) == 1
-        assert rows[0]["state"] == SqlBrokerMessageState.RETRYABLE.name
+        row = rows[0]
+        assert row["queue"] == "default1"
+        assert json.loads(row["payload"]) == {"message": "hello3"}
+        assert row["state"] == SqlBrokerMessageState.RETRYABLE.name
+        assert row["attempts_count"] == 1
+        assert row["deliveries_count"] == 1
+        assert as_datetime(row["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(row["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(row["first_attempt_at"]) > as_datetime(row["created_at"])
+        assert as_datetime(row["last_attempt_at"]) == as_datetime(row["first_attempt_at"])
+        assert as_datetime(row["next_attempt_at"]) >= as_datetime(
+            row["first_attempt_at"]
+        ) + timedelta(seconds=10)
+        assert row["acquired_at"] is None
 
     @pytest.mark.asyncio()
     async def test_consume_batch_automatic_ack_via_batch_annotation(
@@ -1980,7 +2222,30 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         rows = result.mappings().all()
         assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
         assert {row["state"] for row in rows} == {SqlBrokerMessageState.COMPLETED.name}
+        assert rows[0]["attempts_count"] == 1
+        assert rows[0]["deliveries_count"] == 1
+        assert as_datetime(rows[0]["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(rows[0]["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["first_attempt_at"]) > as_datetime(
+            rows[0]["created_at"]
+        )
+        assert as_datetime(rows[0]["last_attempt_at"]) == as_datetime(
+            rows[0]["first_attempt_at"]
+        )
+        assert as_datetime(rows[0]["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["archived_at"]) >= as_datetime(
+            rows[0]["first_attempt_at"]
+        )
 
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message;"))
@@ -2034,7 +2299,30 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         rows = result.mappings().all()
         assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
         assert {row["state"] for row in rows} == {SqlBrokerMessageState.COMPLETED.name}
+        assert rows[0]["attempts_count"] == 1
+        assert rows[0]["deliveries_count"] == 1
+        assert as_datetime(rows[0]["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(rows[0]["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["first_attempt_at"]) > as_datetime(
+            rows[0]["created_at"]
+        )
+        assert as_datetime(rows[0]["last_attempt_at"]) == as_datetime(
+            rows[0]["first_attempt_at"]
+        )
+        assert as_datetime(rows[0]["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["archived_at"]) >= as_datetime(
+            rows[0]["first_attempt_at"]
+        )
 
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message;"))
@@ -2115,6 +2403,12 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result["last_attempt_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
+            assert as_datetime(result["archived_at"]) < datetime.now(
+                tz=timezone.utc
+            ).replace(tzinfo=None)
+            assert as_datetime(result["archived_at"]) >= as_datetime(
+                result["last_attempt_at"]
+            )
         else:
             assert len(result.all()) == 0
 

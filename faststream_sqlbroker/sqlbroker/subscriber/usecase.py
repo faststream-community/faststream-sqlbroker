@@ -6,7 +6,6 @@ import time
 from collections.abc import (
     AsyncGenerator,
     AsyncIterator,
-    Callable,
     Coroutine,
     Iterable,
 )
@@ -85,7 +84,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         self._retry_on_client_error_delay = 5
 
         self._tasks: list[asyncio.Task[Any]] = []
-        self._other_tasks: list[asyncio.Task[Any]] = []
+        self._referenced_tasks: list[asyncio.Task[Any]] = []
 
     @property
     def _client(self) -> SqlBrokerBaseClient:
@@ -107,15 +106,14 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         self._result_buffer.clear()
         self._pending_consume_queue = asyncio.Queue[SqlBrokerInnerMessage]()
         self._tasks.clear()
-        self._other_tasks.clear()
 
         for _ in range(self._worker_count):
-            self._add_task(self._worker_loop, permanent=True)
+            self.add_task(self._worker_loop)
 
         self._post_start()
 
         for loop in [self._fetch_loop, self._flush_loop, self._release_stuck_loop]:
-            self._add_task(loop, permanent=True)
+            self.add_task(loop)
 
         self._stop_task = asyncio.create_task(self._stop_event.wait())
 
@@ -148,27 +146,16 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             return await self.process_message(msg)
 
         except StopConsume:
-            self._other_tasks.append(asyncio.create_task(self.stop()))
+            self._referenced_tasks.append(asyncio.create_task(self.stop()))
 
         except SystemExit:
-            self._other_tasks.append(asyncio.create_task(self.stop()))
+            self._referenced_tasks.append(asyncio.create_task(self.stop()))
 
             if app := self._outer_config.fd_config.context.get("app"):
                 app.exit()
 
         except Exception:  # nosec B110
             pass
-
-    def _add_task(
-        self,
-        callable: Callable[..., Coroutine[Any, Any, Any]],
-        permanent: bool = False,
-    ) -> asyncio.Task[Any]:
-        if permanent:
-            return self.add_task(callable)
-        task = asyncio.create_task(callable())
-        self._tasks.append(task)
-        return task
 
     @asynccontextmanager
     async def _task_context(
@@ -266,7 +253,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                 raise
 
             finally:
-                await message._assert_state_updated(self._logger)
+                message._reject_if_state_not_set(self._logger)
 
                 self._not_processed_count -= 1
                 self._check_if_may_fetch_eagerly()
@@ -548,7 +535,7 @@ class SqlBrokerBatchSubscriber(SqlBrokerSubscriber):
 
             finally:
                 for message in to_process:
-                    await message._assert_state_updated(self._logger)
+                    message._reject_if_state_not_set(self._logger)
 
                 for message in batch:
                     self._not_processed_count -= 1

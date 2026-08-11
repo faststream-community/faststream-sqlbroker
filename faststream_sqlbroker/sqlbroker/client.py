@@ -81,25 +81,17 @@ class SqlBrokerBaseClient(ABC):
         next_attempt_at: datetime | None = None,
         connection: AsyncConnection | None = None,
     ) -> None:
-        if next_attempt_at:
-            stmt = (
-                insert(self._message_table)
-                .values(
-                    queue=queue,
-                    payload=payload,
-                    headers=headers,
-                    next_attempt_at=next_attempt_at,
-                )
-            )  # fmt: skip
-        else:
-            stmt = (
-                insert(self._message_table)
-                .values(
-                    queue=queue,
-                    payload=payload,
-                    headers=headers,
-                )
-            )  # fmt: skip
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        stmt = insert(self._message_table).values(
+            queue=queue,
+            payload=payload,
+            headers=headers,
+            state=SqlBrokerMessageState.PENDING,
+            attempts_count=0,
+            deliveries_count=0,
+            created_at=now,
+            next_attempt_at=next_attempt_at or now,
+        )
 
         if connection:
             await connection.execute(stmt)
@@ -116,26 +108,20 @@ class SqlBrokerBaseClient(ABC):
         if not items:
             return
 
-        if any(next_attempt_at is not None for _, _, _, next_attempt_at in items):
-            default_next_attempt_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            values = [
-                {
-                    "queue": queue,
-                    "payload": payload,
-                    "headers": headers,
-                    "next_attempt_at": next_attempt_at or default_next_attempt_at,
-                }
-                for payload, queue, headers, next_attempt_at in items
-            ]
-        else:
-            values = [
-                {
-                    "queue": queue,
-                    "payload": payload,
-                    "headers": headers,
-                }
-                for payload, queue, headers, _ in items
-            ]
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        values = [
+            {
+                "queue": queue,
+                "payload": payload,
+                "headers": headers,
+                "state": SqlBrokerMessageState.PENDING,
+                "attempts_count": 0,
+                "deliveries_count": 0,
+                "created_at": now,
+                "next_attempt_at": next_attempt_at or now,
+            }
+            for payload, queue, headers, next_attempt_at in items
+        ]
 
         stmt = insert(self._message_table).values(values)
 
@@ -224,6 +210,7 @@ class SqlBrokerBaseClient(ABC):
             return
         async with self._engine.begin() as conn:
             if messages_to_archive:
+                archived_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 values = [
                     {
                         "id": msg.id,
@@ -236,6 +223,7 @@ class SqlBrokerBaseClient(ABC):
                         "created_at": msg.created_at,
                         "first_attempt_at": msg.first_attempt_at,
                         "last_attempt_at": msg.last_attempt_at,
+                        "archived_at": archived_at,
                     }
                     for msg in messages_to_archive
                 ]

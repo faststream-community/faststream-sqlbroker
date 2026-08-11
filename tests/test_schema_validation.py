@@ -1,5 +1,4 @@
 import enum
-from datetime import datetime, timezone
 
 import pytest
 from faststream.exceptions import SetupError
@@ -88,22 +87,15 @@ class TestSchemaValidation(SqlBrokerTestcaseConfig):
                 Enum(SqlBrokerMessageState),
                 nullable=False,
                 index=True,
-                server_default=SqlBrokerMessageState.PENDING.name,
             ),
-            Column("attempts_count", BigInteger, nullable=False, default=0),
-            Column("deliveries_count", BigInteger, nullable=False, default=0),
-            Column(
-                "created_at",
-                timestamp_type,
-                nullable=False,
-                default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-            ),
+            Column("attempts_count", BigInteger, nullable=False),
+            Column("deliveries_count", BigInteger, nullable=False),
+            Column("created_at", timestamp_type, nullable=False),
             Column("first_attempt_at", timestamp_type),
             Column(
                 "next_attempt_at",
                 timestamp_type,
                 nullable=False,
-                default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
                 index=True,
             ),
             Column("last_attempt_at", timestamp_type),
@@ -122,12 +114,7 @@ class TestSchemaValidation(SqlBrokerTestcaseConfig):
             Column("created_at", timestamp_type, nullable=False),
             Column("first_attempt_at", timestamp_type),
             Column("last_attempt_at", timestamp_type),
-            Column(
-                "archived_at",
-                timestamp_type,
-                nullable=False,
-                default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-            ),
+            Column("archived_at", timestamp_type, nullable=False),
         )
 
         async with engine.begin() as conn:

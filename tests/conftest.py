@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -166,22 +165,15 @@ async def recreate_tables(engine: AsyncEngine) -> None:
             Enum(SqlBrokerMessageState),
             nullable=False,
             index=True,
-            server_default=SqlBrokerMessageState.PENDING.name,
         ),
-        Column("attempts_count", BigInteger, nullable=False, default=0),
-        Column("deliveries_count", BigInteger, nullable=False, default=0),
-        Column(
-            "created_at",
-            timestamp_type,
-            nullable=False,
-            default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        ),
+        Column("attempts_count", BigInteger, nullable=False),
+        Column("deliveries_count", BigInteger, nullable=False),
+        Column("created_at", timestamp_type, nullable=False),
         Column("first_attempt_at", timestamp_type),
         Column(
             "next_attempt_at",
             timestamp_type,
             nullable=False,
-            default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
             index=True,
         ),
         Column("last_attempt_at", timestamp_type),
@@ -201,12 +193,7 @@ async def recreate_tables(engine: AsyncEngine) -> None:
         Column("created_at", timestamp_type, nullable=False),
         Column("first_attempt_at", timestamp_type),
         Column("last_attempt_at", timestamp_type),
-        Column(
-            "archived_at",
-            timestamp_type,
-            nullable=False,
-            default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        ),
+        Column("archived_at", timestamp_type, nullable=False),
     )
 
     async with engine.begin() as conn:
