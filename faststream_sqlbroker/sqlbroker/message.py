@@ -75,6 +75,8 @@ class SqlBrokerInnerMessage:
         self._requeue_from_fetched()
 
     def requeue_from_attempted(self) -> None:
+        # TODO: intentional overwrite of state until
+        # https://github.com/ag2ai/faststream/issues/3000 is fixed
         self._requeue_from_attempted()
 
     def _update_state_if_not_set(
@@ -87,10 +89,9 @@ class SqlBrokerInnerMessage:
         self._record_attempt()
         update_method()
 
-        self._state_set = True
-
     def _ack(self) -> None:
         self.state = SqlBrokerMessageState.COMPLETED
+        self._state_set = True
         self.acquired_at = None
 
     def _nack(self) -> None:
@@ -104,20 +105,24 @@ class SqlBrokerInnerMessage:
             self._reject()
         else:
             self.state = SqlBrokerMessageState.RETRYABLE
+            self._state_set = True
             self.next_attempt_at = next_attempt_at
             self.acquired_at = None
 
     def _reject(self) -> None:
         self.state = SqlBrokerMessageState.FAILED
+        self._state_set = True
         self.acquired_at = None
 
     def _requeue_from_fetched(self) -> None:
         self.state = SqlBrokerMessageState.PENDING
+        self._state_set = True
         self.deliveries_count -= 1
         self.acquired_at = None
 
     def _requeue_from_attempted(self) -> None:
         self.state = SqlBrokerMessageState.PENDING
+        self._state_set = True
         self.acquired_at = None
 
     def _record_attempt(self) -> None:

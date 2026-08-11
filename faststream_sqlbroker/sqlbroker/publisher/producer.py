@@ -48,7 +48,7 @@ class SqlBrokerProducer(SqlBrokerProducerProto):
     def __init__(
         self,
         *,
-        engine: AsyncEngine,  # todo
+        engine: AsyncEngine,  # TODO
         parser: Optional["CustomCallable"],
         decoder: Optional["CustomCallable"],
         # message_table_name: str,
