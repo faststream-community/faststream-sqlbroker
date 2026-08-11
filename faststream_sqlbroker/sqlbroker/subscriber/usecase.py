@@ -78,9 +78,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         self._retain_in_archive_on_ack = config.retain_in_archive_on_ack
         self._retain_in_archive_on_reject = config.retain_in_archive_on_reject
 
-        self._pending_consume_queue: asyncio.Queue[SqlBrokerInnerMessage] = (
-            asyncio.Queue()
-        )
+        self._pending_consume_queue = asyncio.Queue[SqlBrokerInnerMessage]()
         self._result_buffer: list[SqlBrokerInnerMessage] = []
         self._stop_event = asyncio.Event()
         self._may_fetch_event = asyncio.Event()
@@ -105,6 +103,9 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         self._may_fetch_event.clear()
         self._not_processed_count = 0
         self._not_persisted_count = 0
+        self._result_buffer.clear()
+        self._pending_consume_queue = asyncio.Queue[SqlBrokerInnerMessage]()
+        self._tasks.clear()
 
         for _ in range(self._worker_count):
             self._add_task(self._worker_loop, permanent=True)
