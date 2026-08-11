@@ -85,6 +85,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         self._retry_on_client_error_delay = 5
 
         self._tasks: list[asyncio.Task[Any]] = []
+        self._other_tasks: list[asyncio.Task[Any]] = []
 
     @property
     def _client(self) -> SqlBrokerBaseClient:
@@ -124,7 +125,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
 
         with suppress(asyncio.TimeoutError):
             await asyncio.wait_for(
-                asyncio.gather(*self._tasks, return_exceptions=True),
+                asyncio.gather(*(self._tasks + self.tasks), return_exceptions=True),
                 timeout=self.graceful_timeout,
             )
 
@@ -146,10 +147,10 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             return await self.process_message(msg)
 
         except StopConsume:
-            asyncio.create_task(self.stop())  # noqa: RUF006
+            self._other_tasks.append(asyncio.create_task(self.stop()))
 
         except SystemExit:
-            asyncio.create_task(self.stop())  # noqa: RUF006
+            self._other_tasks.append(asyncio.create_task(self.stop()))
 
             if app := self._outer_config.fd_config.context.get("app"):
                 app.exit()
@@ -163,9 +164,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         permanent: bool = False,
     ) -> asyncio.Task[Any]:
         if permanent:
-            task = self.add_task(callable)
-            self._tasks.append(task)
-            return task
+            return self.add_task(callable)
         task = asyncio.create_task(callable())
         self._tasks.append(task)
         return task
@@ -176,10 +175,12 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         coro: Coroutine[Any, Any, _CoroutineReturnType],
     ) -> AsyncGenerator[asyncio.Task[_CoroutineReturnType], None]:
         task = asyncio.create_task(coro)
-        yield task
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+        try:
+            yield task
+        finally:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
     @property
     def _free_slots(self) -> int:
@@ -344,7 +345,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             await self._client.retry(to_update_in_primary)
             self._not_persisted_count -= len(to_update_in_primary)
             self._check_if_may_fetch_eagerly()
-        except Exception:
+        except:
             self._buffer_results(messages)
             raise
 
@@ -352,7 +353,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             await self._client.archive(to_save_in_archive, to_delete_from_primary)
             self._not_persisted_count -= len(to_delete_from_primary)
             self._check_if_may_fetch_eagerly()
-        except Exception:
+        except:
             self._buffer_results(to_delete_from_primary)
             raise
 
@@ -471,7 +472,6 @@ class SqlBrokerBatchSubscriber(SqlBrokerSubscriber):
             config.max_fetch_interval * config.batch_max_accumulation_timeout_factor
             + 0.005
         )
-        self._current_batch: list[SqlBrokerInnerMessage] = []
 
     def _setup_batch_parser(self, config: "SqlBrokerSubscriberConfig") -> None:
         config.parser = self.parser.parse_batch
