@@ -717,7 +717,7 @@ wheels = [
 
 [[package]]
 name = "faststream-sqlbroker"
-version = "0.1.0a10"
+version = "0.1.0a11"
 source = { editable = "." }
 dependencies = [
     { name = "faststream" },
