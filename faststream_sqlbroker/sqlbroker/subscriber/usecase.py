@@ -107,6 +107,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         self._result_buffer.clear()
         self._pending_consume_queue = asyncio.Queue[SqlBrokerInnerMessage]()
         self._tasks.clear()
+        self._other_tasks.clear()
 
         for _ in range(self._worker_count):
             self._add_task(self._worker_loop, permanent=True)
