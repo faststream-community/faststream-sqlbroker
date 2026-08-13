@@ -1,6 +1,6 @@
 import enum
 import logging
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
@@ -29,27 +29,26 @@ class SqlBrokerMessageState(str, enum.Enum):
 
 
 class SqlBrokerInnerMessage:
-    retry_strategy: RetryStrategyProto | None
-
     def __init__(
         self,
         id: int,
         queue: str,
         state: SqlBrokerMessageState,
-        headers: dict[str, Any],
+        headers: dict[str, Any] | None,
         payload: bytes,
         attempts_count: int,
         deliveries_count: int,
         created_at: datetime,
-        first_attempt_at: datetime,
+        first_attempt_at: datetime | None,
         next_attempt_at: datetime | None,
         last_attempt_at: datetime | None,
         acquired_at: datetime | None,
+        retry_strategy: RetryStrategyProto | None = None,
     ) -> None:
         self.id = id
         self.queue = queue
         self.state = state
-        self.headers = headers
+        self.headers = headers if headers is not None else {}
         self.payload = payload
         self.attempts_count = attempts_count
         self.deliveries_count = deliveries_count
@@ -59,65 +58,81 @@ class SqlBrokerInnerMessage:
         self.last_attempt_at = last_attempt_at
         self.acquired_at = acquired_at
 
-        self.state_set = False
+        self.retry_strategy = retry_strategy
 
-    async def ack(self) -> None:
-        await self._update_state_if_not_set(self._ack)
+        self._state_set = False
 
-    async def nack(self) -> None:
-        await self._update_state_if_not_set(self._nack)
+    def ack(self) -> None:
+        self._update_state_if_not_set(self._ack)
 
-    async def reject(self) -> None:
-        await self._update_state_if_not_set(self._reject)
+    def nack(self) -> None:
+        self._update_state_if_not_set(self._nack)
 
-    async def _update_state_if_not_set(
-        self, update_method: Callable[[], Coroutine[Any, Any, None]]
+    def reject(self) -> None:
+        self._update_state_if_not_set(self._reject)
+
+    def requeue_from_fetched(self) -> None:
+        self._requeue_from_fetched()
+
+    def requeue_from_attempted(self) -> None:
+        # TODO: https://github.com/ag2ai/faststream/issues/3000
+        self._requeue_from_attempted()
+
+    def _update_state_if_not_set(
+        self,
+        update_method: Callable[[], None],
     ) -> None:
-        if self.state_set:
+        if self._state_set:
             return
 
         self._record_attempt()
-        await update_method()
+        update_method()
 
-        self.state_set = True
+    def _ack(self) -> None:
+        self.state = SqlBrokerMessageState.COMPLETED
+        self._state_set = True
+        self.acquired_at = None
 
-    async def _ack(self) -> None:
-        self._mark_completed()
-
-    async def _nack(self) -> None:
+    def _nack(self) -> None:
         if self.retry_strategy is None or not (
             next_attempt_at := self.retry_strategy.get_next_attempt_at(
-                first_attempt_at=self.first_attempt_at,
+                first_attempt_at=cast("datetime", self.first_attempt_at),
                 last_attempt_at=cast("datetime", self.last_attempt_at),
                 attempts_count=self.attempts_count,
             )
         ):
-            self._mark_failed()
+            self._reject()
         else:
-            self._mark_retryable(next_attempt_at=next_attempt_at)
+            self.state = SqlBrokerMessageState.RETRYABLE
+            self._state_set = True
+            self.next_attempt_at = next_attempt_at
+            self.acquired_at = None
 
-    async def _reject(self) -> None:
-        self._mark_failed()
+    def _reject(self) -> None:
+        self.state = SqlBrokerMessageState.FAILED
+        self._state_set = True
+        self.acquired_at = None
+
+    def _requeue_from_fetched(self) -> None:
+        self.state = SqlBrokerMessageState.PENDING
+        self._state_set = True
+        self.deliveries_count -= 1
+        self.acquired_at = None
+
+    def _requeue_from_attempted(self) -> None:
+        self.state = SqlBrokerMessageState.PENDING
+        self._state_set = True
+        self.attempts_count -= 1  # TODO: faststream/issues/3000
+        self.next_attempt_at = datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )  # TODO: faststream/issues/3000
+        self.acquired_at = None
 
     def _record_attempt(self) -> None:
         self.attempts_count += 1
         self.last_attempt_at = datetime.now(tz=timezone.utc).replace(tzinfo=None)
-        if self.attempts_count == 1:
+        if self.first_attempt_at is None:
             self.first_attempt_at = self.last_attempt_at
-
-    def _mark_completed(self) -> None:
-        self.state = SqlBrokerMessageState.COMPLETED
-
-    def _mark_retryable(self, *, next_attempt_at: datetime) -> None:
-        self.state = SqlBrokerMessageState.RETRYABLE
-        self.next_attempt_at = next_attempt_at
-
-    def _mark_failed(self) -> None:
-        self.state = SqlBrokerMessageState.FAILED
-
-    def _mark_pending(self) -> None:
-        self.state = SqlBrokerMessageState.PENDING
-        self.deliveries_count -= 1
 
     def _allow_delivery(
         self,
@@ -126,7 +141,7 @@ class SqlBrokerInnerMessage:
         logger: "LoggerProto | None",
     ) -> bool:
         if max_deliveries is not None and self.deliveries_count > max_deliveries:
-            self._mark_failed()
+            self._reject()
             if logger:
                 logger.log(
                     logging.ERROR,
@@ -136,8 +151,8 @@ class SqlBrokerInnerMessage:
             return False
         return True
 
-    async def _assert_state_updated(self, logger: "LoggerProto | None") -> None:
-        if not self.state_set:
+    def _reject_if_state_not_set(self, logger: "LoggerProto | None") -> None:
+        if not self._state_set:
             if logger:
                 logger.log(
                     logging.ERROR,
@@ -146,23 +161,23 @@ class SqlBrokerInnerMessage:
                     f"acknowledgement in the handler. As a precaution, the message "
                     f"was Rejected.",
                 )
-            await self.reject()
+            self.reject()
 
     def __repr__(self) -> str:
-        return f"SqlBrokerMessage(id={self.id}, queue={self.queue})"
+        return f"SqlBrokerInnerMessage(id={self.id}, queue={self.queue})"
 
 
 class SqlBrokerMessage(StreamMessage[SqlBrokerInnerMessage]):
     async def ack(self) -> None:
-        await self.raw_message.ack()
+        self.raw_message.ack()
         await super().ack()
 
     async def nack(self) -> None:
-        await self.raw_message.nack()
+        self.raw_message.nack()
         await super().nack()
 
     async def reject(self) -> None:
-        await self.raw_message.reject()
+        self.raw_message.reject()
         await super().reject()
 
 

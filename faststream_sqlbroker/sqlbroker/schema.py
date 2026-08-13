@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from enum import Enum, IntEnum
 
 from faststream.exceptions import SetupError
@@ -101,22 +100,15 @@ def define_sqlbroker_schema(
                 SqlEnum(SqlBrokerMessageState),
                 nullable=False,
                 index=True,
-                server_default=SqlBrokerMessageState.PENDING.name,
             ),
-            Column("attempts_count", BigInteger, nullable=False, default=0),
-            Column("deliveries_count", BigInteger, nullable=False, default=0),
-            Column(
-                "created_at",
-                DateTime,
-                nullable=False,
-                default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-            ),
+            Column("attempts_count", BigInteger, nullable=False),
+            Column("deliveries_count", BigInteger, nullable=False),
+            Column("created_at", DateTime, nullable=False),
             Column("first_attempt_at", DateTime),
             Column(
                 "next_attempt_at",
                 DateTime,
                 nullable=False,
-                default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
                 index=True,
             ),
             Column("last_attempt_at", DateTime),
@@ -138,12 +130,7 @@ def define_sqlbroker_schema(
             Column("created_at", DateTime, nullable=False),
             Column("first_attempt_at", DateTime),
             Column("last_attempt_at", DateTime),
-            Column(
-                "archived_at",
-                DateTime,
-                nullable=False,
-                default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-            ),
+            Column("archived_at", DateTime, nullable=False),
         )
 
     return SqlBrokerSchemaDefinition(

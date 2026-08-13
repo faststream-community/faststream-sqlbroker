@@ -22,7 +22,6 @@ class MyModel(BaseModel):
     flush_interval=1,
     batch=True,
     batch_max_records=10,
-    batch_max_accumulation_timeout_factor=0,
 )
 async def handler(
     bodies: list[MyModel],

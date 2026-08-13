@@ -37,12 +37,14 @@ def on_config(config: object, **kwargs: object) -> object:
 
 # ](../getting-started/foo/index.md)  -> ](https://.../getting-started/foo/)
 # ](../getting-started/foo.md)        -> ](https://.../getting-started/foo/)
-_LINK_RE = re.compile(r"\]\(\.\./(getting-started/[\w/-]+?)(?:/index)?\.md\)")
+# ](../getting-started/foo.md#bar)    -> ](https://.../getting-started/foo/#bar)
+_LINK_RE = re.compile(r"\]\(\.\./(getting-started/[\w/-]+?)(?:/index)?\.md(#[\w-]+)?\)")
 
 
 def _to_absolute(match: re.Match[str]) -> str:
     path = match.group(1)
-    return f"]({FASTSTREAM_DOCS_BASE}/{path}/)"
+    fragment = match.group(2) or ""
+    return f"]({FASTSTREAM_DOCS_BASE}/{path}/{fragment})"
 
 
 def on_page_markdown(markdown: str, **kwargs: object) -> str:

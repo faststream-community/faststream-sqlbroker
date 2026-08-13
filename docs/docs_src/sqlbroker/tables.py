@@ -1,5 +1,3 @@
-from datetime import datetime, timezone
-
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -28,22 +26,15 @@ message = Table(
         Enum(SqlBrokerMessageState),
         nullable=False,
         index=True,
-        server_default=SqlBrokerMessageState.PENDING.name,
     ),
-    Column("attempts_count", BigInteger, nullable=False, default=0),
-    Column("deliveries_count", BigInteger, nullable=False, default=0),
-    Column(
-        "created_at",
-        DateTime,
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-    ),
+    Column("attempts_count", BigInteger, nullable=False),
+    Column("deliveries_count", BigInteger, nullable=False),
+    Column("created_at", DateTime, nullable=False),
     Column("first_attempt_at", DateTime),
     Column(
         "next_attempt_at",
         DateTime,
         nullable=False,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         index=True,
     ),
     Column("last_attempt_at", DateTime),
@@ -64,10 +55,5 @@ message_archive = Table(
     Column("created_at", DateTime, nullable=False),
     Column("first_attempt_at", DateTime),
     Column("last_attempt_at", DateTime),
-    Column(
-        "archived_at",
-        DateTime,
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-    ),
+    Column("archived_at", DateTime, nullable=False),
 )

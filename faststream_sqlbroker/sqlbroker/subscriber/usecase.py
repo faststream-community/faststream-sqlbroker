@@ -6,8 +6,6 @@ import time
 from collections.abc import (
     AsyncGenerator,
     AsyncIterator,
-    Awaitable,
-    Callable,
     Coroutine,
     Iterable,
 )
@@ -40,10 +38,6 @@ if TYPE_CHECKING:
     )
 
 _CoroutineReturnType = TypeVar("_CoroutineReturnType")
-
-
-class StopEventSetError(Exception):
-    pass
 
 
 class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
@@ -83,14 +77,14 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         self._retain_in_archive_on_ack = config.retain_in_archive_on_ack
         self._retain_in_archive_on_reject = config.retain_in_archive_on_reject
 
-        self._pending_consume_queue: asyncio.Queue[SqlBrokerInnerMessage] = (
-            asyncio.Queue()
-        )
+        self._pending_consume_queue = asyncio.Queue[SqlBrokerInnerMessage]()
         self._result_buffer: list[SqlBrokerInnerMessage] = []
-        self._last_fetch_was_full = False
         self._stop_event = asyncio.Event()
         self._may_fetch_event = asyncio.Event()
         self._retry_on_client_error_delay = 5
+
+        self._tasks: list[asyncio.Task[Any]] = []
+        self._referenced_tasks: list[asyncio.Task[Any]] = []
 
     @property
     def _client(self) -> SqlBrokerBaseClient:
@@ -106,6 +100,12 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
 
     async def start(self) -> None:
         self._stop_event.clear()
+        self._may_fetch_event.clear()
+        self._not_processed_count = 0
+        self._not_persisted_count = 0
+        self._result_buffer.clear()
+        self._pending_consume_queue = asyncio.Queue[SqlBrokerInnerMessage]()
+        self._tasks.clear()
 
         for _ in range(self._worker_count):
             self.add_task(self._worker_loop)
@@ -115,17 +115,24 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         for loop in [self._fetch_loop, self._flush_loop, self._release_stuck_loop]:
             self.add_task(loop)
 
-        self._stop_task = self.add_task(self._stop_event.wait)
+        self._stop_task = asyncio.create_task(self._stop_event.wait())
 
         await super().start()
 
     async def stop(self) -> None:
         self._stop_event.set()
-        await self._requeue_pending_consume_queue()
+
         with suppress(asyncio.TimeoutError):
             await asyncio.wait_for(
-                self._finalize_workers(), timeout=self.graceful_timeout
+                asyncio.gather(*(self._tasks + self.tasks), return_exceptions=True),
+                timeout=self.graceful_timeout,
             )
+
+        try:
+            await self._flush_results()
+        except Exception as exc:
+            self._log(logging.ERROR, "SqlBrokerClient error", exc_info=exc)
+
         await super().stop()
 
     @override
@@ -139,10 +146,10 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             return await self.process_message(msg)
 
         except StopConsume:
-            asyncio.create_task(self.stop())  # noqa: RUF006
+            self._referenced_tasks.append(asyncio.create_task(self.stop()))
 
         except SystemExit:
-            asyncio.create_task(self.stop())  # noqa: RUF006
+            self._referenced_tasks.append(asyncio.create_task(self.stop()))
 
             if app := self._outer_config.fd_config.context.get("app"):
                 app.exit()
@@ -153,21 +160,15 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
     @asynccontextmanager
     async def _task_context(
         self,
-        func: Callable[..., Coroutine[Any, Any, Any]],
-        func_args: tuple[Any, ...] | None = None,
-        func_kwargs: dict[str, Any] | None = None,
-    ) -> AsyncGenerator[asyncio.Task[Any], None]:
-        task = self.add_task(func, func_args, func_kwargs)
-        yield task
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-
-    async def _finalize_workers(self) -> None:
-        """Wait for loops to finish and flush results."""
-        await asyncio.gather(*self.tasks, return_exceptions=True)
-        task_flush = self.add_task(self._flush_results)
-        await task_flush
+        coro: Coroutine[Any, Any, _CoroutineReturnType],
+    ) -> AsyncGenerator[asyncio.Task[_CoroutineReturnType], None]:
+        task = asyncio.create_task(coro)
+        try:
+            yield task
+        finally:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
     @property
     def _free_slots(self) -> int:
@@ -181,47 +182,55 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             self._may_fetch_event.set()
 
     async def _fetch_loop(self) -> None:
-        while True:
-            if self._stop_event.is_set():
-                break
-            self._may_fetch_event.clear()
+        try:
+            while True:
+                if self._stop_event.is_set():
+                    break
+                self._may_fetch_event.clear()
 
-            if self._free_slots > 0:
-                limit = min(self._fetch_batch_size, self._free_slots)
+                if self._free_slots > 0:
+                    limit = min(self._fetch_batch_size, self._free_slots)
 
-                try:
-                    batch = await self._client.fetch(self._queues, limit=limit)
-                except Exception as exc:
-                    self._log(logging.ERROR, "SqlBrokerClient error", exc_info=exc)
-                    await self._sleep_until_stop_event(self._retry_on_client_error_delay)
-                    continue
-
-                for msg in batch:
-                    self._not_processed_count += 1
-                    self._not_persisted_count += 1
-                    await self._pending_consume_queue.put(msg)
-                self._last_fetch_was_full = len(batch) == limit
-                if not self._last_fetch_was_full:
-                    await self._sleep_until_stop_event(self._max_fetch_interval)
-                    continue
-
-                self._check_if_may_fetch_eagerly()
-
-            async with self._task_context(
-                asyncio.sleep, func_args=(self._min_fetch_interval,)
-            ) as min_fetch_interval_reached_task:
-                match await self._wait_for_first_event_or_timeout(
-                    self._may_fetch_event,
-                    self._stop_event,
-                    timeout=self._max_fetch_interval,
-                ):
-                    case self._may_fetch_event:
-                        await self._wait_until_stop_event(min_fetch_interval_reached_task)
+                    try:
+                        batch = await self._client.fetch(self._queues, limit=limit)
+                    except Exception as exc:
+                        self._log(logging.ERROR, "SqlBrokerClient error", exc_info=exc)
+                        await self._sleep_until_stop_event(
+                            self._retry_on_client_error_delay
+                        )
                         continue
-                    case self._stop_event | None:
+
+                    for msg in batch:
+                        self._not_processed_count += 1
+                        self._not_persisted_count += 1
+                        await self._pending_consume_queue.put(msg)
+
+                    if not (_last_fetch_was_full := (len(batch) == limit)):
+                        await self._sleep_until_stop_event(self._max_fetch_interval)
                         continue
-                    case _:
-                        raise ValueError
+
+                    self._check_if_may_fetch_eagerly()
+
+                async with self._task_context(
+                    asyncio.sleep(self._min_fetch_interval)
+                ) as min_fetch_interval_reached_task:
+                    match await self._wait_for_first_event_or_timeout(
+                        self._may_fetch_event,
+                        self._stop_event,
+                        timeout=self._max_fetch_interval,
+                    ):
+                        case self._may_fetch_event:
+                            await self._wait_until_stop_event(
+                                min_fetch_interval_reached_task
+                            )
+                            continue
+                        case self._stop_event | None:
+                            continue
+                        case _:
+                            raise ValueError
+
+        finally:
+            self._requeue_pending_consume_queue()
 
     async def _worker_loop(self) -> None:
         while True:
@@ -231,19 +240,26 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             if not message:
                 break
 
-            if message._allow_delivery(
-                max_deliveries=self._max_deliveries,
-                logger=self._logger,
-            ):
-                message.retry_strategy = self._retry_strategy
-                await self.consume(message)
-                await message._assert_state_updated(self._logger)
+            try:
+                if message._allow_delivery(
+                    max_deliveries=self._max_deliveries,
+                    logger=self._logger,
+                ):
+                    message.retry_strategy = self._retry_strategy
+                    await self.consume(message)
 
-            self._not_processed_count -= 1
-            self._check_if_may_fetch_eagerly()
+            except asyncio.CancelledError:
+                message.requeue_from_attempted()
+                raise
 
-            self._buffer_results(message)
-            self._pending_consume_queue.task_done()
+            finally:
+                message._reject_if_state_not_set(self._logger)
+
+                self._not_processed_count -= 1
+                self._check_if_may_fetch_eagerly()
+
+                self._buffer_results(message)
+                self._pending_consume_queue.task_done()
 
     async def _flush_loop(self) -> None:
         while True:
@@ -264,7 +280,9 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                 break
 
             try:
-                await self._client.release_stuck(timeout=self._release_stuck_timeout)
+                await self._client.release_stuck(
+                    self._queues, timeout=self._release_stuck_timeout
+                )
             except Exception as exc:
                 self._log(logging.ERROR, "SqlBrokerClient error", exc_info=exc)
                 await self._sleep_until_stop_event(self._retry_on_client_error_delay)
@@ -290,7 +308,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
         if not (messages := self._pop_from_result_buffer()):
             return
 
-        to_update_in_primary, to_persist_in_archive, to_delete_from_primary = [], [], []
+        to_update_in_primary, to_save_in_archive, to_delete_from_primary = [], [], []
         for message in messages:
             if (
                 self._retain_in_archive_on_ack
@@ -299,7 +317,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                 self._retain_in_archive_on_reject
                 and message.state == SqlBrokerMessageState.FAILED
             ):
-                to_persist_in_archive.append(message)
+                to_save_in_archive.append(message)
             if message.state in {
                 SqlBrokerMessageState.COMPLETED,
                 SqlBrokerMessageState.FAILED,
@@ -307,7 +325,6 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                 to_delete_from_primary.append(message)
             if message.state in {
                 SqlBrokerMessageState.PENDING,
-                SqlBrokerMessageState.PROCESSING,
                 SqlBrokerMessageState.RETRYABLE,
             }:
                 to_update_in_primary.append(message)
@@ -316,48 +333,40 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
             await self._client.retry(to_update_in_primary)
             self._not_persisted_count -= len(to_update_in_primary)
             self._check_if_may_fetch_eagerly()
-        except Exception:
+        except:
             self._buffer_results(messages)
             raise
 
         try:
-            await self._client.archive(to_persist_in_archive, to_delete_from_primary)
+            await self._client.archive(to_save_in_archive, to_delete_from_primary)
             self._not_persisted_count -= len(to_delete_from_primary)
             self._check_if_may_fetch_eagerly()
-        except Exception:
+        except:
             self._buffer_results(to_delete_from_primary)
             raise
 
-    async def _requeue_pending_consume_queue(self) -> None:
-        drained = False
-
+    def _requeue_pending_consume_queue(self) -> None:
         while True:
             try:
                 message = self._pending_consume_queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
-            message._mark_pending()
+            message.requeue_from_fetched()
             self._not_processed_count -= 1
             self._buffer_results(message)
             self._pending_consume_queue.task_done()
-            drained = True
-
-        if drained:
-            self.add_task(self._flush_results)
 
     async def _wait_until_stop_event(
         self,
-        awaitable: Awaitable[_CoroutineReturnType],
+        awaitable: asyncio.Task[_CoroutineReturnType]
+        | Coroutine[Any, Any, _CoroutineReturnType],
         timeout: float | None = None,
     ) -> tuple[_CoroutineReturnType | None, bool]:
-        if isinstance(awaitable, asyncio.Task):
-            coro_task: asyncio.Task[_CoroutineReturnType] = awaitable
-        else:
-
-            async def _runner() -> _CoroutineReturnType:
-                return await awaitable
-
-            coro_task = self.add_task(_runner)
+        match awaitable:
+            case asyncio.Task():
+                coro_task: asyncio.Task[_CoroutineReturnType] = awaitable
+            case Coroutine():
+                coro_task = asyncio.create_task(awaitable)
 
         done, _ = await asyncio.wait(
             [coro_task, self._stop_task],
@@ -396,7 +405,7 @@ class SqlBrokerSubscriber(TasksMixin, SubscriberUsecase[SqlBrokerInnerMessage]):
                 return event
 
         task_to_event: dict[asyncio.Task[bool], asyncio.Event] = {
-            self.add_task(event.wait): event for event in events
+            asyncio.create_task(event.wait()): event for event in events
         }
 
         try:
@@ -458,7 +467,7 @@ class SqlBrokerBatchSubscriber(SqlBrokerSubscriber):
         self._parser = config.parser
         self._decoder = config.decoder
 
-    async def _gather_batch(self) -> tuple[SqlBrokerInnerMessage, ...] | None:
+    async def _gather_batch(self) -> list[SqlBrokerInnerMessage]:
         batch = []
         message, stopped = await self._wait_until_stop_event(
             self._pending_consume_queue.get()
@@ -466,10 +475,7 @@ class SqlBrokerBatchSubscriber(SqlBrokerSubscriber):
         if message:
             batch.append(message)
         if stopped:
-            self._requeue_batch(batch)
-            return None
-        if not message:
-            return None
+            return batch
 
         deadline = time.monotonic() + self._batch_timeout
 
@@ -489,15 +495,14 @@ class SqlBrokerBatchSubscriber(SqlBrokerSubscriber):
                 if message:
                     batch.append(message)
                 if stopped:
-                    self._requeue_batch(batch)
-                    return None
+                    return batch
 
-        return tuple(batch)
+        return batch
 
     def _requeue_batch(self, batch: list[SqlBrokerInnerMessage]) -> None:
         while batch:
             message = batch.pop()
-            message._mark_pending()
+            message.requeue_from_fetched()
             self._not_processed_count -= 1
             self._buffer_results(message)
             self._pending_consume_queue.task_done()
@@ -505,7 +510,9 @@ class SqlBrokerBatchSubscriber(SqlBrokerSubscriber):
     @override
     async def _worker_loop(self) -> None:
         while True:
-            if not (batch := await self._gather_batch()):
+            batch = await self._gather_batch()
+            if self._stop_event.is_set():
+                self._requeue_batch(batch)
                 break
 
             to_process: list[SqlBrokerInnerMessage] = []
@@ -517,14 +524,22 @@ class SqlBrokerBatchSubscriber(SqlBrokerSubscriber):
                     message.retry_strategy = self._retry_strategy
                     to_process.append(message)
 
-            if to_process:
-                await self.consume(tuple(to_process))  # type: ignore[arg-type]
-                for message in to_process:
-                    await message._assert_state_updated(self._logger)
+            try:
+                if to_process:
+                    await self.consume(tuple(to_process))  # type: ignore[arg-type]
 
-            for message in batch:
-                self._not_processed_count -= 1
-                self._buffer_results(message)
-                self._pending_consume_queue.task_done()
+            except asyncio.CancelledError:
+                for message in batch:
+                    message.requeue_from_attempted()
+                raise
+
+            finally:
+                for message in to_process:
+                    message._reject_if_state_not_set(self._logger)
+
+                for message in batch:
+                    self._not_processed_count -= 1
+                    self._buffer_results(message)
+                    self._pending_consume_queue.task_done()
 
             self._check_if_may_fetch_eagerly()

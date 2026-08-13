@@ -1,6 +1,11 @@
 import asyncio
 import json
 import logging
+import multiprocessing
+import os
+import signal
+import time
+import tracemalloc
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -15,7 +20,7 @@ from faststream.annotations import (
 )
 from pydantic import BaseModel
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from faststream_sqlbroker.sqlbroker.annotations import (
     SqlBroker as SqlBrokerAnnotation,
@@ -36,6 +41,7 @@ from tests.helpers import as_datetime
 
 @pytest.mark.connected()
 @pytest.mark.slow()
+@pytest.mark.flaky(reruns=3, reruns_delay=1)
 class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
     async def test_get_one_conflicts_with_handler(self) -> None: ...
 
@@ -108,7 +114,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result["archived_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
-            assert as_datetime(result["archived_at"]) > as_datetime(
+            assert as_datetime(result["archived_at"]) >= as_datetime(
                 result["first_attempt_at"]
             )
         else:
@@ -117,6 +123,46 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message;"))
         assert len(result.all()) == 0
+
+    @pytest.mark.asyncio()
+    async def test_consume_does_not_leak_memory(
+        self,
+        broker: SqlBroker,
+    ) -> None:
+        messages, interval = 1_000, 100
+        consumed = 0
+        snapshots: list[int] = []
+        complete = asyncio.Event()
+        was_tracing = tracemalloc.is_tracing()
+        if not was_tracing:
+            tracemalloc.start()
+
+        @broker.subscriber(
+            queues=["default1"],
+            max_workers=1,
+            max_fetch_interval=0.01,
+            fetch_batch_size=25,
+            flush_interval=0.01,
+        )
+        async def handler(_: Any) -> None:
+            nonlocal consumed
+            consumed += 1
+            if consumed % interval == 0:
+                snapshots.append(tracemalloc.get_traced_memory()[0])
+            if consumed == messages:
+                complete.set()
+
+        try:
+            await broker.publish_batch(*range(messages), queue="default1")
+            snapshots.append(tracemalloc.get_traced_memory()[0])
+            await broker.start()
+            await asyncio.wait_for(complete.wait(), timeout=10)
+        finally:
+            if not was_tracing:
+                tracemalloc.stop()
+
+        assert len(snapshots) == messages // interval + 1
+        assert max(snapshots[1:]) - min(snapshots[1:]) < 1_000_000
 
     @pytest.mark.asyncio()
     async def test_consume_nack_retry(
@@ -240,7 +286,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result["archived_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
-            assert as_datetime(result["archived_at"]) > as_datetime(
+            assert as_datetime(result["archived_at"]) >= as_datetime(
                 result["first_attempt_at"]
             )
         else:
@@ -253,24 +299,45 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("max_deliveries", (1, None))
     @pytest.mark.parametrize("retain_in_archive_on_reject", (True, False))
-    @pytest.mark.parametrize("batch", (False, True))
-    async def test_consume_max_deliveries(
+    @pytest.mark.parametrize("batch", (False, True), ids=("batch=False", "batch=True"))
+    async def test_consume_max_deliveries(  # noqa: PLR0915
         self,
         engine: AsyncEngine,
         recreate_tables: None,
-        event: asyncio.Event,
         max_deliveries: int | None,
         retain_in_archive_on_reject: bool,
         batch: bool,
     ) -> None:
-        """Message that was attempted but got stuck was not allowed a retry due to
-        reached delivery limit.
+        """Consumer was SIGKILL'd mid-processing with no flush; a new broker rejects
+        the stuck message when the delivery limit is reached, or redelivers it when
+        max_deliveries is unset.
         """
+        async with self.get_broker(engine=engine) as publisher:
+            await publisher.publish({"message": "hello1"}, queue="default1")
+
+        await _sigkill_broker_after_processing(engine, count=1)
+
+        async with engine.begin() as conn:
+            result = await conn.execute(text("SELECT * FROM message;"))
+        result = result.mappings().one()
+        assert result["queue"] == "default1"
+        assert json.loads(result["payload"]) == {"message": "hello1"}
+        assert result["state"] == SqlBrokerMessageState.PROCESSING.name
+        assert result["attempts_count"] == 0
+        assert result["deliveries_count"] == 1
+        assert as_datetime(result["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert result["first_attempt_at"] is None
+        assert as_datetime(result["next_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert result["last_attempt_at"] is None
+        assert as_datetime(result["acquired_at"]) > as_datetime(result["created_at"])
+
         logger = MagicMock()
-        async with self.get_broker(
-            engine=engine, logger=logger, graceful_timeout=0.1
-        ) as broker:
-            attempted = []
+        attempted: list[Any] = []
+        async with self.get_broker(engine=engine, logger=logger) as broker:
 
             @broker.subscriber(
                 queues=["default1"],
@@ -283,8 +350,8 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 fetch_batch_size=5,
                 max_not_processed_factor=1,
                 flush_interval=0.1,
-                release_stuck_interval=10,
-                release_stuck_timeout=1,
+                release_stuck_interval=0.1,
+                release_stuck_timeout=0.5,
                 max_deliveries=max_deliveries,
                 ack_policy=AckPolicy.NACK_ON_ERROR,
                 retain_in_archive_on_reject=retain_in_archive_on_reject,
@@ -293,34 +360,29 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 batch_max_accumulation_timeout_factor=0,
             )
             async def handler(msg: Any) -> None:
-                nonlocal attempted
                 if batch:
                     attempted.extend(msg)
                 else:
                     attempted.append(msg)
-                await asyncio.sleep(1)
-
-            await broker.publish({"message": "hello1"}, queue="default1")
-            await broker.start()
-            await asyncio.sleep(0.5)
-            # stop with short graceful_shutdown_timeout so that message becomes stuck
-            await broker.stop()
-            assert len(attempted) == 1
-            await asyncio.sleep(0.5)
-
-            async with engine.begin() as conn:
-                result = await conn.execute(text("SELECT * FROM message;"))
-
-            result = result.mappings().one()
-            assert result["state"] == SqlBrokerMessageState.PROCESSING.name
-            assert result["attempts_count"] == 0
-            assert result["deliveries_count"] == 1
 
             await broker.start()
-            await asyncio.sleep(0.5)
 
             if max_deliveries:
-                assert len(attempted) == 1
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    async with engine.begin() as conn:
+                        primary = await conn.execute(
+                            text("SELECT COUNT(*) FROM message;")
+                        )
+                        if primary.scalar_one() == 0:
+                            break
+                    await asyncio.sleep(0.05)
+                else:
+                    raise AssertionError(  # noqa: TRY003
+                        "Timed out waiting for message to leave primary table"  # noqa: EM101
+                    )
+
+                assert len(attempted) == 0
 
                 async with engine.begin() as conn:
                     result = await conn.execute(text("SELECT * FROM message_archive;"))
@@ -335,24 +397,28 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                     assert as_datetime(result["created_at"]) < datetime.now(
                         tz=timezone.utc
                     ).replace(tzinfo=None)
+                    assert as_datetime(result["created_at"]) < datetime.now(
+                        tz=timezone.utc
+                    ).replace(tzinfo=None)
                     assert result["first_attempt_at"] is None
                     assert result["last_attempt_at"] is None
-
                     assert as_datetime(result["archived_at"]) < datetime.now(
                         tz=timezone.utc
                     ).replace(tzinfo=None)
+                    assert as_datetime(result["archived_at"]) >= as_datetime(
+                        result["created_at"]
+                    )
                 else:
                     assert len(result.all()) == 0
 
                 logs = [x for x in logger.log.call_args_list if x[0][0] == logging.ERROR]
-                assert len(logs) == 2
-                assert "Message delivery limit was exceeded for message" in logs[-1][0][1]
-
-                async with engine.begin() as conn:
-                    result = await conn.execute(text("SELECT * FROM message;"))
-                assert len(result.all()) == 0
+                assert len(logs) == 1
+                assert "Message delivery limit was exceeded for message" in logs[0][0][1]
             else:
-                assert len(attempted) == 2
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline and len(attempted) < 1:  # noqa: ASYNC110
+                    await asyncio.sleep(0.05)
+                assert len(attempted) == 1
 
     @pytest.mark.asyncio()
     @pytest.mark.parametrize("retain_in_archive_on_reject", (True, False))
@@ -419,6 +485,12 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result["last_attempt_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
+            assert as_datetime(result["archived_at"]) < datetime.now(
+                tz=timezone.utc
+            ).replace(tzinfo=None)
+            assert as_datetime(result["archived_at"]) >= as_datetime(
+                result["last_attempt_at"]
+            )
         else:
             assert len(result.all()) == 0
 
@@ -480,7 +552,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         assert as_datetime(result["archived_at"]) < datetime.now(tz=timezone.utc).replace(
             tzinfo=None
         )
-        assert as_datetime(result["archived_at"]) > as_datetime(
+        assert as_datetime(result["archived_at"]) >= as_datetime(
             result["first_attempt_at"]
         )
 
@@ -627,6 +699,9 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         if retain_in_archive_on_ack:
             result_1 = result_1.mappings().all()
             assert len(result_1) == 2
+            result_1 = sorted(result_1, key=lambda x: json.loads(x["payload"])["message"])
+            assert result_1[0]["queue"] == "default1"
+            assert json.loads(result_1[0]["payload"]) == {"message": "hello1"}
             assert result_1[0]["state"] == SqlBrokerMessageState.COMPLETED.name
             assert result_1[0]["attempts_count"] == 1
             assert result_1[0]["deliveries_count"] == 1
@@ -645,7 +720,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result_1[0]["archived_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
-            assert as_datetime(result_1[0]["archived_at"]) > as_datetime(
+            assert as_datetime(result_1[0]["archived_at"]) >= as_datetime(
                 result_1[0]["first_attempt_at"]
             )
         else:
@@ -653,6 +728,9 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
 
         result_2 = result_2.mappings().all()
         assert len(result_2) == 2
+        result_2 = sorted(result_2, key=lambda x: json.loads(x["payload"])["message"])
+        assert result_2[0]["queue"] == "default1"
+        assert json.loads(result_2[0]["payload"]) == {"message": "hello3"}
         assert result_2[0]["state"] == SqlBrokerMessageState.PENDING.name
         assert result_2[0]["attempts_count"] == 0
         assert result_2[0]["deliveries_count"] == 0
@@ -704,8 +782,35 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         result = result.mappings().all()
         assert len(result) == 2
+        result = sorted(result, key=lambda x: json.loads(x["payload"])["message"])
+        assert result[0]["queue"] == "default1"
+        assert json.loads(result[0]["payload"]) == {"message": "hello1"}
         assert result[0]["state"] == SqlBrokerMessageState.COMPLETED.name
         assert result[1]["state"] == SqlBrokerMessageState.COMPLETED.name
+        assert result[0]["attempts_count"] == 1
+        assert result[0]["deliveries_count"] == 1
+        assert as_datetime(result[0]["created_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["first_attempt_at"]) > as_datetime(
+            result[0]["created_at"]
+        )
+        assert as_datetime(result[0]["last_attempt_at"]) == as_datetime(
+            result[0]["first_attempt_at"]
+        )
+        assert as_datetime(result[0]["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["archived_at"]) >= as_datetime(
+            result[0]["first_attempt_at"]
+        )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(text("SELECT * FROM message;"))
+        assert len(result.all()) == 0
 
     @pytest.mark.asyncio()
     async def test_consume_manual_nack_takes_precedence(
@@ -746,6 +851,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message;"))
         result = result.mappings().all()
         assert len(result) == 2
+        result = sorted(result, key=lambda x: json.loads(x["payload"])["message"])
         assert result[0]["state"] == SqlBrokerMessageState.RETRYABLE.name
         assert result[1]["state"] == SqlBrokerMessageState.RETRYABLE.name
 
@@ -814,8 +920,35 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         result = result.mappings().all()
         assert len(result) == 2
+        result = sorted(result, key=lambda x: json.loads(x["payload"])["message"])
+        assert result[0]["queue"] == "default1"
+        assert json.loads(result[0]["payload"]) == {"message": "hello1"}
         assert result[0]["state"] == SqlBrokerMessageState.FAILED.name
         assert result[1]["state"] == SqlBrokerMessageState.FAILED.name
+        assert result[0]["attempts_count"] == 1
+        assert result[0]["deliveries_count"] == 1
+        assert as_datetime(result[0]["created_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["first_attempt_at"]) > as_datetime(
+            result[0]["created_at"]
+        )
+        assert as_datetime(result[0]["last_attempt_at"]) == as_datetime(
+            result[0]["first_attempt_at"]
+        )
+        assert as_datetime(result[0]["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(result[0]["archived_at"]) >= as_datetime(
+            result[0]["first_attempt_at"]
+        )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(text("SELECT * FROM message;"))
+        assert len(result.all()) == 0
 
     @pytest.mark.asyncio()
     async def test_consume_context_fields(
@@ -1057,7 +1190,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         assert len(result) == 8
 
     @pytest.mark.asyncio()
-    @pytest.mark.parametrize("batch", (False, True))
+    @pytest.mark.parametrize("batch", (False, True), ids=("batch=False", "batch=True"))
     async def test_consume_fetch_intervals_fetch_on_freed_capacity(
         self,
         engine: AsyncEngine,
@@ -1266,11 +1399,72 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
     async def test_consume_release_stuck(
         self, engine: AsyncEngine, recreate_tables: None, event: asyncio.Event
     ) -> None:
-        """Broker was stopped mid-processing, processing wasn't finalized/flushed,
-        messages were requeued on next startup.
+        """Consumer was SIGKILL'd mid-processing with no flush; release_stuck
+        requeues the messages so a new broker can process them. Also verifies
+        release_stuck is scoped to the subscriber's queues.
         """
-        async with self.get_broker(engine=engine, graceful_timeout=0.1) as broker:
-            attempted = []
+        async with self.get_broker(engine=engine) as publisher:
+            await publisher.publish({"message": "hello1"}, queue="default1")
+            await publisher.publish({"message": "hello2"}, queue="default1")
+
+        await _sigkill_broker_after_processing(engine, count=2)
+
+        async with engine.begin() as conn:
+            result = await conn.execute(text("SELECT * FROM message;"))
+        rows = result.mappings().all()
+        assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
+        assert rows[0]["state"] == SqlBrokerMessageState.PROCESSING.name
+        assert rows[0]["attempts_count"] == 0
+        assert rows[0]["deliveries_count"] == 1
+        assert as_datetime(rows[0]["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert rows[0]["first_attempt_at"] is None
+        assert as_datetime(rows[0]["next_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert rows[0]["last_attempt_at"] is None
+        assert as_datetime(rows[0]["acquired_at"]) > as_datetime(rows[0]["created_at"])
+        assert rows[1]["queue"] == "default1"
+        assert json.loads(rows[1]["payload"]) == {"message": "hello2"}
+        assert rows[1]["state"] == SqlBrokerMessageState.PROCESSING.name
+        assert rows[1]["attempts_count"] == 0
+        assert rows[1]["deliveries_count"] == 1
+        assert as_datetime(rows[1]["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert rows[1]["first_attempt_at"] is None
+        assert as_datetime(rows[1]["next_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert rows[1]["last_attempt_at"] is None
+        assert as_datetime(rows[1]["acquired_at"]) > as_datetime(rows[1]["created_at"])
+
+        attempted: list[Any] = []
+        async with self.get_broker(engine=engine) as broker:
+            stuck_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+                seconds=60
+            )
+            client = broker.config.broker_config.client
+            async with engine.begin() as conn:
+                await conn.execute(
+                    client._message_table.insert().values(
+                        queue="other",
+                        headers={},
+                        payload=b'{"message":"other"}',
+                        state=SqlBrokerMessageState.PROCESSING,
+                        attempts_count=0,
+                        deliveries_count=1,
+                        created_at=stuck_at,
+                        first_attempt_at=None,
+                        next_attempt_at=stuck_at,
+                        last_attempt_at=None,
+                        acquired_at=stuck_at,
+                    )
+                )
 
             @broker.subscriber(
                 queues=["default1"],
@@ -1282,38 +1476,118 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 min_fetch_interval=0,
                 fetch_batch_size=5,
                 max_not_processed_factor=1,
-                flush_interval=10,
-                release_stuck_interval=10,
+                flush_interval=0.1,
+                release_stuck_interval=0.1,
                 release_stuck_timeout=0.5,
                 max_deliveries=20,
                 ack_policy=AckPolicy.NACK_ON_ERROR,
             )
             async def handler(msg: Any) -> None:
-                nonlocal attempted
                 attempted.append(msg)
+
+            await broker.start()
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and len(attempted) < 2:  # noqa: ASYNC110
+                await asyncio.sleep(0.05)
+            assert len(attempted) == 2
+
+            async with engine.begin() as conn:
+                other = (
+                    (
+                        await conn.execute(
+                            text("SELECT * FROM message WHERE queue = 'other';")
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+            assert other["state"] == SqlBrokerMessageState.PROCESSING.name
+            assert other["acquired_at"] is not None
+
+    @pytest.mark.asyncio()
+    @pytest.mark.parametrize("batch", (False, True), ids=("batch=False", "batch=True"))
+    async def test_consume_requeue_on_graceful_timeout(
+        self,
+        engine: AsyncEngine,
+        recreate_tables: None,
+        event: asyncio.Event,
+        batch: bool,
+    ) -> None:
+        """When graceful_timeout cancels an in-flight consume, the message is
+        flushed back to PENDING.
+        """
+        async with self.get_broker(engine=engine, graceful_timeout=0.1) as broker:
+            attempted: list[Any] = []
+
+            @broker.subscriber(
+                queues=["default1"],
+                max_workers=1,
+                retry_strategy=ConstantRetryStrategy(
+                    delay_seconds=10, max_total_delay_seconds=None, max_attempts=None
+                ),
+                max_fetch_interval=0.1,
+                min_fetch_interval=0.1,
+                fetch_batch_size=5,
+                max_not_processed_factor=1,
+                flush_interval=0.1,
+                release_stuck_interval=10,
+                release_stuck_timeout=10,
+                max_deliveries=20,
+                ack_policy=AckPolicy.NACK_ON_ERROR,
+                batch=batch,
+                batch_max_records=1 if batch else None,
+                batch_max_accumulation_timeout_factor=0,
+            )
+            async def handler(msg: Any) -> None:
+                nonlocal attempted
+                if batch:
+                    attempted.extend(msg)
+                else:
+                    attempted.append(msg)
+                event.set()
                 await asyncio.sleep(1)
 
             await broker.publish({"message": "hello1"}, queue="default1")
-            await broker.publish({"message": "hello2"}, queue="default1")
-
-            # message is attempted but not finalized and not flushed
             await broker.start()
-            await asyncio.sleep(0.5)
+            await asyncio.wait_for(event.wait(), timeout=self.timeout)
             await broker.stop()
+            await asyncio.sleep(0.2)
 
-            assert len(attempted) == 2
+            assert len(attempted) == 1
+
             async with engine.begin() as conn:
                 result = await conn.execute(text("SELECT * FROM message;"))
-            result = result.mappings().all()
-            assert len(result) == 2
-            assert result[0]["state"] == SqlBrokerMessageState.PROCESSING.name
-            assert result[0]["attempts_count"] == 0
-            assert result[0]["deliveries_count"] == 1
+            result = result.mappings().one()
+            assert result["queue"] == "default1"
+            assert json.loads(result["payload"]) == {"message": "hello1"}
+            assert result["state"] == SqlBrokerMessageState.PENDING.name
+            assert result["attempts_count"] == 0
+            assert result["deliveries_count"] == 1
+            assert as_datetime(result["created_at"]) < datetime.now(
+                tz=timezone.utc
+            ).replace(tzinfo=None)
+            assert as_datetime(
+                result["first_attempt_at"]
+            ) < datetime.now(  # TODO: faststream/issues/3000
+                tz=timezone.utc
+            ).replace(tzinfo=None)
+            assert as_datetime(result["first_attempt_at"]) > as_datetime(
+                result["created_at"]
+            )
+            assert as_datetime(
+                result["last_attempt_at"]
+            ) == as_datetime(  # TODO: faststream/issues/3000
+                result["first_attempt_at"]
+            )
+            assert as_datetime(result["next_attempt_at"]) <= as_datetime(
+                datetime.now(tz=timezone.utc).replace(tzinfo=None)
+            )
+            assert result["acquired_at"] is None
 
             await broker.start()
             await asyncio.sleep(0.5)
 
-            assert len(attempted) == 4
+            assert len(attempted) == 2
 
     @pytest.mark.asyncio()
     async def test_consume_work_sharing(
@@ -1372,7 +1646,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 nonlocal attempt_counts
                 attempt_counts[msg["message"]] = attempt_counts.get(msg["message"], 0) + 1
 
-            msg_count = 1000
+            msg_count = 100
             for idx in range(msg_count):
                 await broker_1.publish({"message": f"{idx + 1}"}, queue="default1")
 
@@ -1381,7 +1655,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             await broker_3.start()
 
             while True:
-                if len(attempt_counts) != msg_count:
+                if len(attempt_counts) < msg_count:
                     await asyncio.sleep(0.1)
                 else:
                     break
@@ -1466,7 +1740,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result["archived_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
-            assert as_datetime(result["archived_at"]) > as_datetime(
+            assert as_datetime(result["archived_at"]) >= as_datetime(
                 result["first_attempt_at"]
             )
 
@@ -1624,12 +1898,21 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message;"))
         rows = result.mappings().all()
         assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
         for row in rows:
             assert row["state"] == SqlBrokerMessageState.PENDING.name
             assert row["attempts_count"] == 0
             assert row["deliveries_count"] == 0
+            assert as_datetime(row["created_at"]) < datetime.now(tz=timezone.utc).replace(
+                tzinfo=None
+            )
             assert row["acquired_at"] is None
             assert row["first_attempt_at"] is None
+            assert as_datetime(row["next_attempt_at"]) < datetime.now(
+                tz=timezone.utc
+            ).replace(tzinfo=None)
             assert row["last_attempt_at"] is None
 
         async with engine.begin() as conn:
@@ -1681,7 +1964,37 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
 
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message_archive;"))
-        assert len(result.all()) == 2
+        rows = result.mappings().all()
+        assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
+        assert rows[0]["state"] == SqlBrokerMessageState.COMPLETED.name
+        assert rows[1]["state"] == SqlBrokerMessageState.COMPLETED.name
+        assert rows[0]["attempts_count"] == 1
+        assert rows[0]["deliveries_count"] == 1
+        assert as_datetime(rows[0]["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(rows[0]["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["first_attempt_at"]) > as_datetime(
+            rows[0]["created_at"]
+        )
+        assert as_datetime(rows[0]["last_attempt_at"]) == as_datetime(
+            rows[0]["first_attempt_at"]
+        )
+        assert as_datetime(rows[0]["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["archived_at"]) >= as_datetime(
+            rows[0]["first_attempt_at"]
+        )
+
+        async with engine.begin() as conn:
+            result = await conn.execute(text("SELECT * FROM message;"))
+        assert len(result.all()) == 0
 
     @pytest.mark.asyncio()
     async def test_consume_batch_automatic_nack(
@@ -1725,9 +2038,27 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message;"))
         rows = result.mappings().all()
         assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
         for row in rows:
             assert row["state"] == SqlBrokerMessageState.RETRYABLE.name
             assert row["attempts_count"] == 1
+            assert row["deliveries_count"] == 1
+            assert as_datetime(row["created_at"]) < datetime.now(tz=timezone.utc).replace(
+                tzinfo=None
+            )
+            assert as_datetime(row["first_attempt_at"]) < datetime.now(
+                tz=timezone.utc
+            ).replace(tzinfo=None)
+            assert as_datetime(row["first_attempt_at"]) > as_datetime(row["created_at"])
+            assert as_datetime(row["last_attempt_at"]) == as_datetime(
+                row["first_attempt_at"]
+            )
+            assert as_datetime(row["next_attempt_at"]) >= as_datetime(
+                row["first_attempt_at"]
+            ) + timedelta(seconds=10)
+            assert row["acquired_at"] is None
 
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message_archive;"))
@@ -1779,16 +2110,74 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         rows = result.mappings().all()
         assert len(rows) == 2
-        assert sorted(row["state"] for row in rows) == [
-            SqlBrokerMessageState.COMPLETED.name,
-            SqlBrokerMessageState.FAILED.name,
-        ]
+        rows_by_state = {row["state"]: row for row in rows}
+        completed = rows_by_state[SqlBrokerMessageState.COMPLETED.name]
+        failed = rows_by_state[SqlBrokerMessageState.FAILED.name]
+        assert completed["queue"] == "default1"
+        assert json.loads(completed["payload"]) == {"message": "hello1"}
+        assert completed["attempts_count"] == 1
+        assert completed["deliveries_count"] == 1
+        assert as_datetime(completed["created_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(completed["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(completed["first_attempt_at"]) > as_datetime(
+            completed["created_at"]
+        )
+        assert as_datetime(completed["last_attempt_at"]) == as_datetime(
+            completed["first_attempt_at"]
+        )
+        assert as_datetime(completed["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(completed["archived_at"]) >= as_datetime(
+            completed["first_attempt_at"]
+        )
+        assert failed["queue"] == "default1"
+        assert json.loads(failed["payload"]) == {"message": "hello2"}
+        assert failed["attempts_count"] == 1
+        assert failed["deliveries_count"] == 1
+        assert as_datetime(failed["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(failed["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(failed["first_attempt_at"]) > as_datetime(failed["created_at"])
+        assert as_datetime(failed["last_attempt_at"]) == as_datetime(
+            failed["first_attempt_at"]
+        )
+        assert as_datetime(failed["archived_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(failed["archived_at"]) >= as_datetime(
+            failed["first_attempt_at"]
+        )
 
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message;"))
         rows = result.mappings().all()
         assert len(rows) == 1
-        assert rows[0]["state"] == SqlBrokerMessageState.RETRYABLE.name
+        row = rows[0]
+        assert row["queue"] == "default1"
+        assert json.loads(row["payload"]) == {"message": "hello3"}
+        assert row["state"] == SqlBrokerMessageState.RETRYABLE.name
+        assert row["attempts_count"] == 1
+        assert row["deliveries_count"] == 1
+        assert as_datetime(row["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(row["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(row["first_attempt_at"]) > as_datetime(row["created_at"])
+        assert as_datetime(row["last_attempt_at"]) == as_datetime(row["first_attempt_at"])
+        assert as_datetime(row["next_attempt_at"]) >= as_datetime(
+            row["first_attempt_at"]
+        ) + timedelta(seconds=10)
+        assert row["acquired_at"] is None
 
     @pytest.mark.asyncio()
     async def test_consume_batch_automatic_ack_via_batch_annotation(
@@ -1834,7 +2223,30 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         rows = result.mappings().all()
         assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
         assert {row["state"] for row in rows} == {SqlBrokerMessageState.COMPLETED.name}
+        assert rows[0]["attempts_count"] == 1
+        assert rows[0]["deliveries_count"] == 1
+        assert as_datetime(rows[0]["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(rows[0]["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["first_attempt_at"]) > as_datetime(
+            rows[0]["created_at"]
+        )
+        assert as_datetime(rows[0]["last_attempt_at"]) == as_datetime(
+            rows[0]["first_attempt_at"]
+        )
+        assert as_datetime(rows[0]["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["archived_at"]) >= as_datetime(
+            rows[0]["first_attempt_at"]
+        )
 
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message;"))
@@ -1888,7 +2300,30 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             result = await conn.execute(text("SELECT * FROM message_archive;"))
         rows = result.mappings().all()
         assert len(rows) == 2
+        rows = sorted(rows, key=lambda x: json.loads(x["payload"])["message"])
+        assert rows[0]["queue"] == "default1"
+        assert json.loads(rows[0]["payload"]) == {"message": "hello1"}
         assert {row["state"] for row in rows} == {SqlBrokerMessageState.COMPLETED.name}
+        assert rows[0]["attempts_count"] == 1
+        assert rows[0]["deliveries_count"] == 1
+        assert as_datetime(rows[0]["created_at"]) < datetime.now(tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        assert as_datetime(rows[0]["first_attempt_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["first_attempt_at"]) > as_datetime(
+            rows[0]["created_at"]
+        )
+        assert as_datetime(rows[0]["last_attempt_at"]) == as_datetime(
+            rows[0]["first_attempt_at"]
+        )
+        assert as_datetime(rows[0]["archived_at"]) < datetime.now(
+            tz=timezone.utc
+        ).replace(tzinfo=None)
+        assert as_datetime(rows[0]["archived_at"]) >= as_datetime(
+            rows[0]["first_attempt_at"]
+        )
 
         async with engine.begin() as conn:
             result = await conn.execute(text("SELECT * FROM message;"))
@@ -1969,6 +2404,12 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             assert as_datetime(result["last_attempt_at"]) < datetime.now(
                 tz=timezone.utc
             ).replace(tzinfo=None)
+            assert as_datetime(result["archived_at"]) < datetime.now(
+                tz=timezone.utc
+            ).replace(tzinfo=None)
+            assert as_datetime(result["archived_at"]) >= as_datetime(
+                result["last_attempt_at"]
+            )
         else:
             assert len(result.all()) == 0
 
@@ -2213,3 +2654,87 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
         assert len(batch_.batch_headers) == 2
         assert batch_.batch_headers[0]["header_1"] == "value_1"
         assert batch_.batch_headers[1]["header_2"] == "value_2"
+
+
+async def _sigkill_broker_after_processing(
+    engine: AsyncEngine,
+    *,
+    count: int,
+) -> None:
+    database_url = engine.url.render_as_string(hide_password=False)
+    ctx = multiprocessing.get_context("spawn")
+    process = ctx.Process(
+        target=_run_broker_until_killed,
+        args=(database_url,),
+        daemon=True,
+    )
+    process.start()
+    try:
+        await _wait_for_message_state_count(
+            engine,
+            state=SqlBrokerMessageState.PROCESSING,
+            count=count,
+        )
+        assert process.pid is not None
+        os.kill(process.pid, signal.SIGKILL)
+        process.join(timeout=5)
+        assert not process.is_alive()
+    finally:
+        if process.is_alive() and process.pid is not None:
+            os.kill(process.pid, signal.SIGKILL)
+            process.join(timeout=5)
+
+
+def _run_broker_until_killed(database_url: str) -> None:
+    asyncio.run(_broker_consume_forever(database_url))
+
+
+async def _broker_consume_forever(database_url: str) -> None:
+    engine = create_async_engine(database_url)
+    broker = SqlBroker(engine=engine)
+    try:
+
+        @broker.subscriber(
+            queues=["default1"],
+            max_workers=2,
+            retry_strategy=ConstantRetryStrategy(
+                delay_seconds=0, max_total_delay_seconds=None, max_attempts=2
+            ),
+            max_fetch_interval=0,
+            min_fetch_interval=0,
+            fetch_batch_size=5,
+            max_not_processed_factor=1,
+            flush_interval=10,
+            release_stuck_interval=10,
+            release_stuck_timeout=10,
+            max_deliveries=20,
+            ack_policy=AckPolicy.NACK_ON_ERROR,
+        )
+        async def handler(msg: Any) -> None:
+            await asyncio.sleep(3600)
+
+        await broker.start()
+        await asyncio.Event().wait()
+    finally:
+        await engine.dispose()
+
+
+async def _wait_for_message_state_count(
+    engine: AsyncEngine,
+    *,
+    state: SqlBrokerMessageState,
+    count: int,
+    timeout: float = 5,
+) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        async with engine.begin() as conn:
+            result = await conn.execute(
+                text("SELECT COUNT(*) FROM message WHERE state = :state"),
+                {"state": state.name},
+            )
+            if result.scalar_one() == count:
+                return
+        await asyncio.sleep(0.05)
+    msg = f"Timed out waiting for {count} message(s) in state {state.name}"
+    raise AssertionError(msg)

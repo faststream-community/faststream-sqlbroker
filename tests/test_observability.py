@@ -86,6 +86,7 @@ async def test_snapshot_and_sampler_populate_persisted_state(
                 "created_at": created_at,
                 "attempts_count": 1,
                 "deliveries_count": 1,
+                "archived_at": now,
             },
         )
 

@@ -113,16 +113,19 @@ The broker's and publisher's `.publish_batch()` methods insert all messages in a
 - **`min_fetch_interval`** (default: `max_fetch_interval`) — Minimum interval between consecutive fetches. If the last fetch was full (returned as many messages as the fetch's limit), the next fetch happens after both (i) minimum fetch interval has passed, and (ii) capacity equal to the fetch batch size has freed up in both the acquired-but-not-yet-processed and acquired-but-not-yet-persisted sets.
 - **`max_fetch_interval`** — Maximum interval between consecutive fetches.
 - **`flush_interval`** — Interval between flushes of processed message state to the database.
-- **`release_stuck_interval`** (default: `60`) — Interval between checks for stuck [`PROCESSING`](#message-lifecycle){.internal-link} messages.
-- **`release_stuck_timeout`** (default: `60 * 10`) — Interval since `acquired_at` after which a [`PROCESSING`](#message-lifecycle){.internal-link} message is considered stuck and is released back to [`PENDING`](#message-lifecycle){.internal-link}.
+- **`release_stuck_interval`** (default: `60`) — Interval between checks for stuck [`PROCESSING`](#message-lifecycle){.internal-link} messages in the subscriber's queues.
+- **`release_stuck_timeout`** (default: `60 * 10`) — Interval since `acquired_at` after which a [`PROCESSING`](#message-lifecycle){.internal-link} message in the subscriber's queues is considered stuck and is released back to [`PENDING`](#message-lifecycle){.internal-link}.
 - **`max_deliveries`** (default: `None`) — Maximum number of deliveries allowed for a message for [poison message protection](../sqlbroker/design.md#poison-message-protection){.internal-link}. If set, messages that have reached this limit are [Rejected](#reject){.internal-link} without processing. Note that this might violate at-least-once processing semantics.
-- **`batch`** (default: `False`) — Call the handler once per group of messages rather than once per message to enable [batch consumption](#batch-consumption){.internal-link}. Requires `max_workers=1`.
-- **`batch_max_records`** (default: `fetch_batch_size`) — For `batch=True`, maximum number of messages in a single handler batch. Must not exceed `fetch_batch_size` multiplied by either `max_not_processed_factor` or `max_not_persisted_factor`.
-- **`batch_max_accumulation_timeout_factor`** (default: `0`) — For `batch=True`, multiplier for `max_fetch_interval` used to determine the batch accumulation timeout. The effective timeout is `max_fetch_interval * batch_max_accumulation_timeout_factor + 5 ms`.
 - **`ack_policy`** (default: `REJECT_ON_ERROR`) — [`AckPolicy`](#automatic-via-ackpolicy){.internal-link} that controls acknowledgement behavior.
 - **`retain_in_archive_on_ack`** (default: `True`) — [Acked](#ack){.internal-link} messages, in addition to being removed from the primary table, are also persisted in the archive table. Requires the broker to define an archive table (`message_archive_table_name`).
 - **`retain_in_archive_on_reject`** (default: `True`) — [Rejected](#reject){.internal-link} messages, in addition to being removed from the primary table, are also persisted in the archive table, where they serve as a [dead-letter queue](../sqlbroker/design.md#dead-letter-queue){.internal-link}. Requires the broker to define an archive table (`message_archive_table_name`).
 
+#### Handler parameters
+
+- Message body — Annotated as `bytes`, `str`, `dict`, or a Pydantic model.
+- `SqlBrokerMessage` — Wrapper over the message for [manual](#manual){.internal-link} acknowledgement and access to message metadata.
+
+Also see [additional handler parameters](https://faststream.ag2.ai/latest/getting-started/context/#annotated-aliases){.external-link target="_blank"}.
 
 ### Message lifecycle
 
@@ -233,9 +236,17 @@ Set `batch=True` to call the handler once per group of messages rather than once
 {!> docs_src/sqlbroker/batch.py !}
 ```
 
-The handler's first argument is the list of message bodies, annotated as in single-message mode — `list[bytes]`, `list[dict]`, or a list of a Pydantic model. The handler may optionally take a `SqlBrokerBatchMessage` — the wrapper over the whole batch, whose `.messages` attribute holds the per-record `SqlBrokerMessage` wrappers in the same order.
+#### Batch-only subscriber parameters
 
-The accumulation timer starts when the first message arrives and lasts `max_fetch_interval * batch_max_accumulation_timeout_factor + 5 ms`. Messages are collected until either `batch_max_records` is reached or the timer expires.
+- **`batch`** (default: `False`) — Call the handler once per group of messages rather than once per message. Requires `max_workers=1`.
+- **`batch_max_records`** (default: `fetch_batch_size`) — Maximum number of messages in a single handler batch. Must not exceed `fetch_batch_size` multiplied by either `max_not_processed_factor` or `max_not_persisted_factor`.
+- **`batch_max_accumulation_timeout_factor`** (default: `0`) — Multiplier for `max_fetch_interval` used to determine the batch accumulation timeout. The effective timeout is `max_fetch_interval * batch_max_accumulation_timeout_factor + 5 ms`. The accumulation timer starts when the first message arrives. Messages are collected until either `batch_max_records` is reached or the timer expires.
+
+#### Handler parameters
+
+- Message bodies — List of message bodies, annotated as in single-message mode — `list[bytes]`, `list[str]`, `list[dict]`, or a list of a Pydantic model.
+- `SqlBrokerBatchMessage` — Wrapper over the whole batch, whose `.messages` attribute holds the per-record `SqlBrokerMessage` wrappers in the same order.
+
 
 Automatic outcomes via [`ack_policy`](#automatic-via-ackpolicy){.internal-link} and [manual](#manual){.internal-link} operations on `SqlBrokerBatchMessage` apply to the whole batch; [manual](#manual){.internal-link} operations on the individual `SqlBrokerMessage` objects in `.messages` apply per message.
 
