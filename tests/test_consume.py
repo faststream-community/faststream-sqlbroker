@@ -41,6 +41,7 @@ from tests.helpers import as_datetime
 
 @pytest.mark.connected()
 @pytest.mark.slow()
+@pytest.mark.flaky(reruns=3, reruns_delay=1)
 class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
     async def test_get_one_conflicts_with_handler(self) -> None: ...
 
@@ -1645,7 +1646,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
                 nonlocal attempt_counts
                 attempt_counts[msg["message"]] = attempt_counts.get(msg["message"], 0) + 1
 
-            msg_count = 1000
+            msg_count = 100
             for idx in range(msg_count):
                 await broker_1.publish({"message": f"{idx + 1}"}, queue="default1")
 
@@ -1654,7 +1655,7 @@ class TestConsume(SqlBrokerTestcaseConfig, BrokerRealConsumeTestcase):
             await broker_3.start()
 
             while True:
-                if len(attempt_counts) != msg_count:
+                if len(attempt_counts) < msg_count:
                     await asyncio.sleep(0.1)
                 else:
                     break

@@ -43,6 +43,7 @@ test = [
     "pytest-cov>=5.0.0",
     "pytest-xdist>=3.8.0",
     "pytest-timeout>=2.4.0",
+    "pytest-rerunfailures>=15.1",
     "dirty-equals==0.11",
     "aiokafka>=0.9,<0.15",
     "asyncpg>=0.31.0",
