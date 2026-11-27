@@ -1,6 +1,7 @@
 [![Downloads](https://static.pepy.tech/personalized-badge/faststream-sqlbroker?period=month&units=international_system&left_color=grey&right_color=green&left_text=downloads/month)](https://www.pepy.tech/projects/faststream-sqlbroker)
 [![Package version](https://img.shields.io/pypi/v/faststream-sqlbroker?label=PyPI)](https://pypi.org/project/faststream-sqlbroker)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://faststream-community.github.io/faststream-sqlbroker/)
+[![FastStream](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fag2ai%2Ffaststream%2Fmain%2Fdocs%2Fdocs%2Fen%2Fassets%2Fimg%2Fshield.json)](https://faststream.ag2.ai)
 
 # faststream-sqlbroker
 
